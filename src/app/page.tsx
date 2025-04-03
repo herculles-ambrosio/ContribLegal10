@@ -11,7 +11,7 @@ export default function Home() {
   return (
     <Layout>
       {/* Hero Section */}
-      <section className="py-16 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg mb-12">
+      <section className="py-16 rounded-lg mb-12">
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center flex-col items-center mb-8">
             <Image 
@@ -24,7 +24,7 @@ export default function Home() {
               style={{ objectFit: 'contain' }}
             />
           </div>
-          <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
+          <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto text-gray-700">
             Cadastre suas notas fiscais, pague seus impostos em dia e concorra a prêmios incríveis!
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
