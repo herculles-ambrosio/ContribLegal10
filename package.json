@@ -1,0 +1,43 @@
+{
+  "name": "contribuinte-legal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "create-admin": "node -r dotenv/config src/scripts/create-admin.js",
+    "check-admin": "node -r dotenv/config src/scripts/check-admin.js",
+    "recreate-admin-auth": "node -r dotenv/config src/scripts/recreate-admin-auth.js",
+    "fix-admin": "node -r dotenv/config src/scripts/fix-admin-auth.js",
+    "create-admin-sql": "node -r dotenv/config src/scripts/create-admin-sql.js",
+    "print-admin-sql": "node src/scripts/print-admin-sql.js",
+    "reset-admin-password": "node -r dotenv/config src/scripts/reset-admin-password.js",
+    "create-test-data": "node -r dotenv/config src/scripts/create-test-data.js"
+  },
+  "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.49.3",
+    "dotenv": "^16.4.7",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
+    "next": "15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.5.2",
+    "react-icons": "^5.5.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
