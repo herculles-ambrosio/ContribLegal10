@@ -261,13 +261,13 @@ export default function PainelContribuinte() {
         <Card title="Próximo Sorteio">
           <div className="p-4 text-center">
             <FaTrophy className="text-4xl text-yellow-500 mx-auto mb-4" />
-            <h3 className="text-xl font-medium mb-2">Sorteio Mensal</h3>
+            <h3 className="text-xl font-medium mb-2">Estatísticas para Sorteio</h3>
             <p className="text-gray-600 mb-4">
               Você tem {estatisticas.totalValidados} documentos validados 
               para o próximo sorteio.
             </p>
             <p className="bg-yellow-50 text-yellow-700 p-2 rounded border border-yellow-200 text-sm">
-              O próximo sorteio ocorrerá dia <strong>30/10/2023</strong>
+              O próximo sorteio ocorrerá dia <strong>21/12/2025</strong>
             </p>
           </div>
         </Card>
