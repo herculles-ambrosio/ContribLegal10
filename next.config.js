@@ -11,8 +11,6 @@ const nextConfig = {
   // Configurações adicionais para garantir compatibilidade
   output: 'standalone',
   poweredByHeader: false,
-  // Otimizações para melhor performance
-  swcMinify: true,
 };
 
 module.exports = nextConfig; 
