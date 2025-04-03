@@ -8,6 +8,7 @@ import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUnd
 import Layout from '@/components/Layout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
+import { toast } from 'react-hot-toast';
 
 // Função para criar cliente do Supabase com opções específicas para admin
 const criarClienteAdmin = async () => {
@@ -956,6 +957,54 @@ export default function AdminDashboard() {
     }
   };
   
+  const visualizarDocumento = async (id: string, url: string) => {
+    try {
+      console.log(`Tentando visualizar documento ${id} com URL: ${url}`);
+      setOperacaoEmAndamento(true);
+      
+      if (!url || url.trim() === '') {
+        console.error(`URL não fornecida para o documento ${id}`);
+        toast.error('URL do documento não encontrada');
+        setOperacaoEmAndamento(false);
+        return;
+      }
+      
+      // Obter cliente Supabase
+      const adminClient = await criarClienteAdmin();
+
+      // Gerar URL assinada para o arquivo no storage
+      const { data, error } = await adminClient.storage
+        .from('documentos')
+        .createSignedUrl(url, 60); // URL válida por 60 segundos
+      
+      if (error) {
+        console.error('Erro ao gerar URL assinada:', error);
+        toast.error(`Erro ao acessar o documento: ${error.message}`);
+        setOperacaoEmAndamento(false);
+        return;
+      }
+      
+      if (!data || !data.signedUrl) {
+        console.error('URL assinada não gerada');
+        toast.error('Não foi possível gerar o link para o documento');
+        setOperacaoEmAndamento(false);
+        return;
+      }
+      
+      console.log('URL assinada gerada com sucesso:', data.signedUrl);
+      
+      // Abrir em uma nova aba/janela
+      window.open(data.signedUrl, '_blank');
+      
+      toast.success('Documento aberto em uma nova aba');
+    } catch (error: any) {
+      console.error('Erro ao visualizar documento:', error);
+      toast.error(`Erro ao visualizar documento: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+      setOperacaoEmAndamento(false);
+    }
+  };
+  
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1099,15 +1148,13 @@ export default function AdminDashboard() {
                             >
                               <FaClock />
                             </button>
-                            <a 
-                              href={doc.arquivo_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
+                            <button 
+                              onClick={() => visualizarDocumento(doc.id, doc.arquivo_url)}
                               className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
                               title="Visualizar arquivo"
                             >
                               <FaFileAlt />
-                            </a>
+                            </button>
                           </div>
                         </td>
                       </tr>
