@@ -26,17 +26,42 @@ export default function Login() {
       try {
         // Forçar logout ao entrar na página de login
         console.log('Limpando sessões na página de login...');
+        
+        // Primeiro passo: fazer logout no Supabase
+        await supabase.auth.signOut();
+        
+        // Segundo passo: usar a função de logout personalizada
         await logout();
         
-        // Garantir que qualquer resquício de sessão seja removido
+        // Terceiro passo: garantir que qualquer resquício de sessão seja removido
         if (typeof window !== 'undefined') {
+          // Remover todas as entradas relacionadas ao Supabase do localStorage e sessionStorage
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.includes('supabase')) {
+              localStorage.removeItem(key);
+            }
+          }
+          
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && key.includes('supabase')) {
+              sessionStorage.removeItem(key);
+            }
+          }
+          
+          // Remover especificamente os itens conhecidos
           localStorage.removeItem('supabase.auth.user');
           localStorage.removeItem('supabase.auth.token');
           sessionStorage.removeItem('supabase.auth.user');
           sessionStorage.removeItem('supabase.auth.token');
         }
         
-        setIsCleanupDone(true);
+        // Aguardar um instante para garantir que as alterações tenham efeito
+        setTimeout(() => {
+          console.log('Limpeza de sessão concluída.');
+          setIsCleanupDone(true);
+        }, 500);
       } catch (error) {
         console.error('Erro ao limpar sessões:', error);
         setIsCleanupDone(true);
@@ -53,26 +78,46 @@ export default function Login() {
     
     const verificarSessao = async () => {
       try {
+        // Imprimir mensagem para debug
+        console.log('Verificando sessão após limpeza');
+        
+        // Verificar se há uma sessão válida
         const { data: { session } } = await supabase.auth.getSession();
         
-        if (session) {
-          // Se já estiver logado, verificar se é admin
-          const { data: userData, error } = await supabase
-            .from('usuarios')
-            .select('master')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (!error && userData && userData.master === 'S') {
-            console.log('Usuário já logado como administrador. Redirecionando...');
-            router.push('/admin');
-          } else {
-            console.log('Usuário já logado. Redirecionando...');
-            router.push('/dashboard');
-          }
+        // Se não houver sessão, não fazer nada (permanece na página de login)
+        if (!session) {
+          console.log('Nenhuma sessão encontrada, permanecendo na tela de login');
+          return;
+        }
+        
+        console.log('Sessão encontrada após tentativa de limpeza, verificando detalhes');
+        
+        // Verificar se a sessão é válida tentando acessar dados do usuário
+        const { data: userData, error } = await supabase
+          .from('usuarios')
+          .select('master')
+          .eq('id', session.user.id)
+          .single();
+          
+        // Se houve erro ao buscar dados do usuário, provavelmente a sessão é inválida
+        if (error) {
+          console.log('Erro ao validar sessão, permanecendo na tela de login');
+          // Forçar novo logout para garantir
+          await logout();
+          return;
+        }
+        
+        // Se chegou até aqui, a sessão é válida
+        if (userData && userData.master === 'S') {
+          console.log('Usuário já logado como administrador. Redirecionando...');
+          router.push('/admin');
+        } else {
+          console.log('Usuário já logado. Redirecionando...');
+          router.push('/dashboard');
         }
       } catch (error) {
         console.error('Erro ao verificar sessão:', error);
+        // Em caso de erro, permanecer na tela de login
       }
     };
     
