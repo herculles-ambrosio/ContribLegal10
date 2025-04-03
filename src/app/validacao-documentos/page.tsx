@@ -9,7 +9,13 @@ import { FaCheck, FaTimes, FaHourglassHalf, FaEye, FaEdit, FaTrash, FaSearch, Fa
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Input from '@/components/ui/Input';
-import { getUsuarioLogado, isAdmin as checkIsAdmin } from '@/lib/auth';
+import { getUsuarioLogado } from '@/lib/auth';
+
+// função para verificar se o usuário é admin
+const checkIsAdmin = async () => {
+  const usuario = await getUsuarioLogado();
+  return usuario?.master === 'S';
+};
 
 type Documento = {
   id: string;
