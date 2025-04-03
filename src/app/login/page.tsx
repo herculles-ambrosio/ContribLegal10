@@ -16,113 +16,66 @@ export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Começa como true para mostrar carregamento
   const [error, setError] = useState('');
-  const [isCleanupDone, setIsCleanupDone] = useState(false);
-
-  // Primeiro limpar qualquer sessão existente para forçar login manual
+  
+  // Uma única função useEffect para forçar o logout e garantir que não há sessão ativa
   useEffect(() => {
-    const limparSessoes = async () => {
-      try {
-        // Forçar logout ao entrar na página de login
-        console.log('Limpando sessões na página de login...');
-        
-        // Primeiro passo: fazer logout no Supabase
-        await supabase.auth.signOut();
-        
-        // Segundo passo: usar a função de logout personalizada
-        await logout();
-        
-        // Terceiro passo: garantir que qualquer resquício de sessão seja removido
-        if (typeof window !== 'undefined') {
-          // Remover todas as entradas relacionadas ao Supabase do localStorage e sessionStorage
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.includes('supabase')) {
-              localStorage.removeItem(key);
-            }
-          }
+    async function limparSessaoForçada() {
+      console.log("Iniciando limpeza forçada de sessão...");
+      
+      // Se estamos em um navegador, limpar storage
+      if (typeof window !== 'undefined') {
+        try {
+          // Desconectar qualquer sessão do Supabase
+          await supabase.auth.signOut();
           
-          for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            if (key && key.includes('supabase')) {
-              sessionStorage.removeItem(key);
-            }
-          }
+          // Limpar localStorage e sessionStorage
+          localStorage.clear();
+          sessionStorage.clear();
           
-          // Remover especificamente os itens conhecidos
-          localStorage.removeItem('supabase.auth.user');
+          // Para ter certeza, remover itens específicos do Supabase
           localStorage.removeItem('supabase.auth.token');
-          sessionStorage.removeItem('supabase.auth.user');
+          localStorage.removeItem('supabase.auth.user');
           sessionStorage.removeItem('supabase.auth.token');
-        }
-        
-        // Aguardar um instante para garantir que as alterações tenham efeito
-        setTimeout(() => {
-          console.log('Limpeza de sessão concluída.');
-          setIsCleanupDone(true);
-        }, 500);
-      } catch (error) {
-        console.error('Erro ao limpar sessões:', error);
-        setIsCleanupDone(true);
-      }
-    };
-    
-    limparSessoes();
-  }, []);
-
-  // Verificar se já está logado apenas APÓS limpeza de sessão
-  useEffect(() => {
-    // Só verificar sessão após garantir que a limpeza foi concluída
-    if (!isCleanupDone) return;
-    
-    const verificarSessao = async () => {
-      try {
-        // Imprimir mensagem para debug
-        console.log('Verificando sessão após limpeza');
-        
-        // Verificar se há uma sessão válida
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        // Se não houver sessão, não fazer nada (permanece na página de login)
-        if (!session) {
-          console.log('Nenhuma sessão encontrada, permanecendo na tela de login');
-          return;
-        }
-        
-        console.log('Sessão encontrada após tentativa de limpeza, verificando detalhes');
-        
-        // Verificar se a sessão é válida tentando acessar dados do usuário
-        const { data: userData, error } = await supabase
-          .from('usuarios')
-          .select('master')
-          .eq('id', session.user.id)
-          .single();
+          sessionStorage.removeItem('supabase.auth.user');
           
-        // Se houve erro ao buscar dados do usuário, provavelmente a sessão é inválida
-        if (error) {
-          console.log('Erro ao validar sessão, permanecendo na tela de login');
-          // Forçar novo logout para garantir
-          await logout();
-          return;
+          console.log("Limpeza de sessão concluída com sucesso");
+        } catch (err) {
+          console.error("Erro ao limpar sessão:", err);
         }
-        
-        // Se chegou até aqui, a sessão é válida
-        if (userData && userData.master === 'S') {
-          console.log('Usuário já logado como administrador. Redirecionando...');
-          router.push('/admin');
-        } else {
-          console.log('Usuário já logado. Redirecionando...');
-          router.push('/dashboard');
-        }
-      } catch (error) {
-        console.error('Erro ao verificar sessão:', error);
-        // Em caso de erro, permanecer na tela de login
+      }
+      
+      // Independente do sucesso da limpeza, permitir interação após 800ms
+      setTimeout(() => {
+        setIsLoading(false);
+        console.log("Página de login pronta para interação");
+      }, 800);
+    }
+    
+    // Executar a limpeza ao montar o componente
+    limparSessaoForçada();
+    
+    // Impedir qualquer redirecionamento automático adicionando um bloqueio temporário
+    const preventRedirect = (e: BeforeUnloadEvent) => {
+      if (isLoading) {
+        e.preventDefault();
+        return (e.returnValue = '');
       }
     };
     
-    verificarSessao();
-  }, [router, isCleanupDone]);
+    // Adicionar evento para bloquear saídas enquanto carrega
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', preventRedirect);
+    }
+    
+    // Limpar evento ao desmontar
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', preventRedirect);
+      }
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +89,14 @@ export default function Login() {
     setError('');
     
     try {
+      // Verificar se não há nenhuma sessão ativa antes de tentar login
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      if (existingSession) {
+        // Se houver uma sessão ativa, forçar logout novamente
+        await supabase.auth.signOut();
+        console.log('Sessão existente removida antes do login');
+      }
+      
       // Verificação especial para o admin de desenvolvimento
       if ((email === 'admin@sistema.com' && password === '@13152122') ||
           (email === 'admin' && password === 'admin')) {
