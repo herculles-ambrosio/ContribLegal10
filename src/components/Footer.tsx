@@ -11,12 +11,12 @@ export default function Footer() {
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
-            <div className="mb-4 flex flex-col items-start space-y-4">
+            <div className="mb-4 flex flex-col items-start space-y-3">
               <Image 
                 src="/LOGO_CL_trans.png" 
                 alt="Contribuinte Legal" 
-                width={150} 
-                height={60} 
+                width={140} 
+                height={55} 
                 className="rounded-lg" 
                 style={{ objectFit: 'contain' }}
                 priority
@@ -24,16 +24,13 @@ export default function Footer() {
               <Image 
                 src="/Htechminas transparente.png" 
                 alt="HTech Minas" 
-                width={120} 
-                height={40} 
-                className="mt-2" 
+                width={100} 
+                height={33} 
+                className="mt-1" 
                 style={{ objectFit: 'contain' }}
               />
             </div>
-            <p className="mb-4">
-              Sistema para cadastro de documentos fiscais e participação em sorteios de prêmios.
-            </p>
-            <div className="flex space-x-4 mt-6">
+            <div className="flex space-x-4 mt-4">
               <a href="#" className="text-white hover:text-blue-300 transition-colors">
                 <FaFacebook className="text-xl" />
               </a>
@@ -44,7 +41,7 @@ export default function Footer() {
                 <FaTwitter className="text-xl" />
               </a>
             </div>
-            <p className="text-sm opacity-75 mt-6">
+            <p className="text-sm opacity-75 mt-4">
               © {currentYear} H-Tech Minas. Todos os direitos reservados.
             </p>
           </div>
