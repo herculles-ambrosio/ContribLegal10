@@ -1,6 +1,5 @@
 import Link from 'next/link';
-import { FaEnvelope, FaPhone, FaMapMarkerAlt, FaFacebook, FaInstagram, FaTwitter } from 'react-icons/fa';
-import { MdLocationOn } from 'react-icons/md';
+import { FaEnvelope, FaPhone, FaMapMarkerAlt } from 'react-icons/fa';
 import Image from 'next/image';
 
 export default function Footer() {
@@ -30,18 +29,7 @@ export default function Footer() {
                 style={{ objectFit: 'contain' }}
               />
             </div>
-            <div className="flex space-x-4 mt-4">
-              <a href="#" className="text-white hover:text-blue-300 transition-colors">
-                <FaFacebook className="text-xl" />
-              </a>
-              <a href="#" className="text-white hover:text-blue-300 transition-colors">
-                <FaInstagram className="text-xl" />
-              </a>
-              <a href="#" className="text-white hover:text-blue-300 transition-colors">
-                <FaTwitter className="text-xl" />
-              </a>
-            </div>
-            <p className="text-sm opacity-75 mt-4">
+            <p className="text-sm opacity-75 mt-3">
               © {currentYear} H-Tech Minas. Todos os direitos reservados.
             </p>
           </div>
