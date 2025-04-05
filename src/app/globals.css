@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary-light: #4a92ff;
+  --primary: #0066cc;
+  --primary-dark: #003f8a;
+  --background-gradient: linear-gradient(135deg, #1a2e52, #0a1930);
 }
 
 @theme inline {
@@ -14,7 +18,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #0a1930;
     --foreground: #ededed;
   }
 }
@@ -23,4 +27,44 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+.bg-gradient-blue {
+  background: var(--background-gradient);
+}
+
+/* Animações para ícones */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.icon-animate {
+  animation: pulse 2s infinite ease-in-out;
+}
+
+/* Estilo para botões modernos */
+.btn-modern {
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-modern:after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.5s, height 0.5s;
+}
+
+.btn-modern:hover:after {
+  width: 300%;
+  height: 300%;
 }

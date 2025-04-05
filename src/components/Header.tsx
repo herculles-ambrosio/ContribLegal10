@@ -122,18 +122,18 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white shadow-sm py-4">
+    <header className="bg-white shadow-md py-2 border-b border-blue-100">
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <Image 
-              src="/LOGO CL.jpeg" 
+              src="/LOGO_CL_trans.png" 
               alt="Contribuinte Legal" 
-              width={280} 
-              height={280} 
-              className="rounded-md shadow-md" 
-              style={{ objectFit: 'contain' }}
+              width={220} 
+              height={64} 
+              className="object-contain" 
+              style={{ height: '52px', width: 'auto' }}
               priority
             />
           </Link>
@@ -142,48 +142,45 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
           <nav className="hidden md:flex items-center space-x-6">
             {!isAuthenticated && (
               <>
-                <Link href="/" className={`text-gray-700 hover:text-blue-600 ${pathname === '/' ? 'font-medium text-blue-600' : ''}`}>
+                <Link href="/" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/' ? 'font-medium text-blue-600' : ''}`}>
                   Início
                 </Link>
-                <Link href="/como-funciona" className={`text-gray-700 hover:text-blue-600 ${pathname === '/como-funciona' ? 'font-medium text-blue-600' : ''}`}>
+                <Link href="/como-funciona" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/como-funciona' ? 'font-medium text-blue-600' : ''}`}>
                   Como Funciona
                 </Link>
-                <Link href="/sorteios" className={`text-gray-700 hover:text-blue-600 ${pathname === '/sorteios' ? 'font-medium text-blue-600' : ''}`}>
+                <Link href="/sorteios" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/sorteios' ? 'font-medium text-blue-600' : ''}`}>
                   Sorteios
-                </Link>
-                <Link href="/faq" className={`text-gray-700 hover:text-blue-600 ${pathname === '/faq' ? 'font-medium text-blue-600' : ''}`}>
-                  FAQ
                 </Link>
               </>
             )}
             
             {isAuthenticated && (
-              <Link href="/" className={`text-gray-700 hover:text-blue-600 ${pathname === '/' ? 'font-medium text-blue-600' : ''}`}>
+              <Link href="/" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/' ? 'font-medium text-blue-600' : ''}`}>
                 Início
               </Link>
             )}
 
             {isAuthenticated ? (
               <div className="relative flex items-center space-x-4">
-                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600 transition-colors">
                   Meu Painel
                 </Link>
                 
                 {userMaster !== 'S' && (
-                  <Link href="/meus-documentos" className={`text-gray-700 hover:text-blue-600 ${pathname.includes('/meus-documentos') ? 'font-medium text-blue-600' : ''}`}>
+                  <Link href="/meus-documentos" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname.includes('/meus-documentos') ? 'font-medium text-blue-600' : ''}`}>
                     Meus Documentos
                   </Link>
                 )}
                 
                 {/* User Menu */}
                 <div className="flex items-center space-x-2 text-sm border-l pl-4 border-gray-200">
-                  <FaUser className="text-gray-500" />
+                  <FaUser className="text-blue-500" />
                   <span className="text-gray-700">
                     <span className="font-semibold">{tipoUsuario || 'Contribuinte'}:</span> {nomeUsuario}
                   </span>
                   <button 
                     onClick={handleSignOut}
-                    className="text-gray-500 hover:text-red-500 inline-flex items-center"
+                    className="text-gray-500 hover:text-red-500 inline-flex items-center transition-colors"
                   >
                     <FaSignOutAlt className="ml-1" />
                     <span className="ml-1">Sair</span>
@@ -191,12 +188,12 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Link href="/login">
-                  <Button variant="secondary">Login</Button>
+                  <Button variant="secondary" className="py-1.5 px-4">Login</Button>
                 </Link>
                 <Link href="/registro">
-                  <Button variant="primary">Cadastrar</Button>
+                  <Button variant="primary" className="py-1.5 px-4">Cadastrar</Button>
                 </Link>
               </div>
             )}
@@ -219,20 +216,17 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
         {isMobileMenuOpen && (
           <div className="md:hidden mt-4 pt-4 border-t border-gray-100">
             <nav className="flex flex-col space-y-4">
-              <Link href="/" className={`text-gray-700 hover:text-blue-600 ${pathname === '/' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+              <Link href="/" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
                 Início
               </Link>
               
               {!isAuthenticated && (
                 <>
-                  <Link href="/como-funciona" className={`text-gray-700 hover:text-blue-600 ${pathname === '/como-funciona' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Link href="/como-funciona" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/como-funciona' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
                     Como Funciona
                   </Link>
-                  <Link href="/sorteios" className={`text-gray-700 hover:text-blue-600 ${pathname === '/sorteios' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Link href="/sorteios" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname === '/sorteios' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
                     Sorteios
-                  </Link>
-                  <Link href="/faq" className={`text-gray-700 hover:text-blue-600 ${pathname === '/faq' ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
-                    FAQ
                   </Link>
                 </>
               )}
@@ -241,42 +235,42 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                 <>
                   <div className="pt-4 mt-4 border-t border-gray-100">
                     <div className="flex items-center space-x-2 mb-4">
-                      <FaUser className="text-gray-500" />
+                      <FaUser className="text-blue-500" />
                       <span className="text-gray-700 font-medium">
                         <span className="font-semibold">{tipoUsuario || 'Contribuinte'}:</span> {nomeUsuario}
                       </span>
                     </div>
                     <div className="flex flex-col space-y-4">
-                      <Link href="/dashboard" className="text-gray-700 hover:text-blue-600" onClick={() => setMobileMenuOpen(false)}>
+                      <Link href="/dashboard" className="text-gray-700 hover:text-blue-600 transition-colors" onClick={() => setMobileMenuOpen(false)}>
                         Meu Painel
                       </Link>
                       
                       {userMaster !== 'S' && (
-                        <Link href="/meus-documentos" className={`text-gray-700 hover:text-blue-600 ${pathname.includes('/meus-documentos') ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                        <Link href="/meus-documentos" className={`text-gray-700 hover:text-blue-600 transition-colors ${pathname.includes('/meus-documentos') ? 'font-medium text-blue-600' : ''}`} onClick={() => setMobileMenuOpen(false)}>
                           Meus Documentos
                         </Link>
                       )}
                       
-                      <button 
+                      <button
                         onClick={() => {
-                          setMobileMenuOpen(false);
                           handleSignOut();
+                          setMobileMenuOpen(false);
                         }}
-                        className="text-red-500 hover:text-red-700 inline-flex items-center"
+                        className="text-red-500 hover:text-red-700 inline-flex items-center transition-colors"
                       >
                         <FaSignOutAlt className="mr-2" />
-                        Sair
+                        <span>Sair</span>
                       </button>
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col space-y-2 pt-4 mt-4 border-t border-gray-100">
+                <div className="flex flex-col space-y-3 pt-4 mt-4 border-t border-gray-100">
                   <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="secondary" className="w-full">Login</Button>
+                    <Button variant="secondary" fullWidth>Login</Button>
                   </Link>
                   <Link href="/registro" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="primary" className="w-full">Cadastrar</Button>
+                    <Button variant="primary" fullWidth>Cadastrar</Button>
                   </Link>
                 </div>
               )}
