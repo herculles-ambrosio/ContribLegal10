@@ -7,10 +7,11 @@ import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { FaUser, FaLock, FaExclamationTriangle } from 'react-icons/fa';
+import { FaUser, FaLock, FaExclamationTriangle, FaKey } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import { logout } from '@/lib/auth';
+import Image from 'next/image';
 
 export default function Login() {
   const router = useRouter();
@@ -204,19 +205,30 @@ export default function Login() {
   return (
     <Layout>
       <div className="flex justify-center items-center min-h-[70vh]">
-        <Card className="max-w-md w-full p-6">
-          <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+        <Card className="max-w-md w-full p-6 shadow-xl" variant="blue-gradient">
+          <div className="flex flex-col items-center mb-8">
+            <Image 
+              src="/LOGO_CL_trans.png" 
+              alt="Contribuinte Legal" 
+              width={180} 
+              height={70} 
+              className="mb-6" 
+              priority
+              style={{ objectFit: 'contain' }}
+            />
+            <h1 className="text-3xl font-bold text-center text-white">Login</h1>
+          </div>
           
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 text-red-700">
+            <div className="bg-red-900/20 border-l-4 border-red-500 p-4 mb-6 text-white rounded">
               <div className="flex items-center">
-                <FaExclamationTriangle className="mr-2" />
+                <FaExclamationTriangle className="mr-2 text-red-400" />
                 <p>{error}</p>
               </div>
             </div>
           )}
           
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-4">
               <div>
                 <Input
@@ -228,6 +240,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  variant="dark"
                 />
               </div>
               
@@ -241,32 +254,34 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  variant="dark"
                 />
               </div>
               
               <div className="text-right">
-                <Link href="/esqueci-senha" className="text-sm text-blue-600 hover:text-blue-800">
+                <Link href="/esqueci-senha" className="text-sm text-blue-200 hover:text-white transition-colors">
                   Esqueceu sua senha?
                 </Link>
               </div>
-              
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full py-2"
-                disabled={isLoading}
+            </div>
+            
+            <div className="pt-2">
+              <Button 
+                type="submit" 
+                variant="primary" 
+                fullWidth
+                isLoading={isLoading}
+                className="py-3 text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                animated
               >
-                {isLoading ? 'Entrando...' : 'Entrar'}
+                Entrar
               </Button>
             </div>
           </form>
           
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
-              Não tem uma conta?{' '}
-              <Link href="/registro" className="text-blue-600 hover:text-blue-800">
-                Cadastre-se
-              </Link>
+          <div className="mt-8 text-center">
+            <p className="text-blue-100">
+              Não tem uma conta? <Link href="/registro" className="text-white font-semibold hover:underline">Cadastre-se</Link>
             </p>
           </div>
         </Card>
