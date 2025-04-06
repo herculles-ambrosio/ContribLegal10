@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QrCodeScannerProps {
   onScanSuccess: (result: string) => void;
@@ -41,7 +41,6 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
       rememberLastUsedCamera: true,
       // Configurações específicas para dispositivos móveis
       aspectRatio: 1.0,
-      formatsToSupport: [0], // QR_CODE apenas
       showTorchButtonIfSupported: true,
       showZoomSliderIfSupported: true,
       defaultZoomValueIfSupported: 2,
@@ -74,10 +73,25 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
       };
 
       const onScanFailureCallback = (errorMessage: string | Object) => {
-        // Converter o erro para string
-        const errorStr = typeof errorMessage === 'string' 
-          ? errorMessage 
-          : JSON.stringify(errorMessage);
+        // Converter o erro para string, com tratamento seguro para evitar outro TypeError
+        let errorStr = "";
+        try {
+          if (typeof errorMessage === 'string') {
+            errorStr = errorMessage;
+          } else if (errorMessage && typeof errorMessage === 'object') {
+            errorStr = JSON.stringify(errorMessage);
+          } else {
+            errorStr = "Erro desconhecido ao escanear QR code";
+          }
+        } catch (e) {
+          errorStr = "Erro não processável durante o escaneamento";
+          console.error("Erro ao processar mensagem de erro:", e);
+        }
+        
+        // Verificações de segurança
+        if (!errorStr) {
+          errorStr = "Erro desconhecido durante o escaneamento";
+        }
         
         // Ignorar erros comuns durante o escaneamento
         if (
@@ -85,6 +99,16 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           errorStr.includes('No barcode or QR code detected') ||
           errorStr.includes('Scanner paused')
         ) {
+          return;
+        }
+        
+        // Verificar se este erro está relacionado ao TypeError conhecido
+        if (
+          errorStr.includes('TypeError') || 
+          errorStr.includes('String') || 
+          errorStr.includes('undefined is not an object')
+        ) {
+          console.warn("Tipo de erro conhecido detectado, suprimindo notificação ao usuário");
           return;
         }
         

@@ -429,6 +429,7 @@ export default function CadastrarDocumento() {
                 type="button" 
                 variant="secondary"
                 onClick={() => router.push('/meus-documentos')}
+                className="text-sm md:text-base"
               >
                 Cancelar
               </Button>
@@ -440,8 +441,11 @@ export default function CadastrarDocumento() {
                   icon={FaQrcode}
                   onClick={handleScanQR}
                   disabled={showScanner}
+                  className="text-sm md:text-base flex items-center justify-center"
+                  aria-label="Escanear código QR"
                 >
-                  Scanear QR
+                  <span className="hidden sm:inline">QR Code</span>
+                  <FaQrcode className="sm:hidden" size={18} />
                 </Button>
               )}
               
@@ -449,7 +453,7 @@ export default function CadastrarDocumento() {
                 type="submit" 
                 variant="primary" 
                 isLoading={isLoading}
-                className="py-3 text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                className="py-3 text-sm md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
                 animated
               >
                 Cadastrar
