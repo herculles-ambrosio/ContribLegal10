@@ -68,3 +68,17 @@ body {
   width: 300%;
   height: 300%;
 }
+
+/* Garantindo que os títulos sejam sempre visíveis */
+@media (max-width: 767px) {
+  h2, h3 {
+    color: #000 !important;
+  }
+  
+  .bg-gradient-blue h2,
+  .bg-gradient-blue h3,
+  [class*="bg-gradient"] h2,
+  [class*="bg-gradient"] h3 {
+    color: #fff !important;
+  }
+}
