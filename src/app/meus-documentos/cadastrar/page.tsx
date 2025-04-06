@@ -169,10 +169,23 @@ export default function CadastrarDocumento() {
   const handleQrCodeError = (error: any) => {
     console.error('Erro na leitura do QR code:', error);
     
+    // Mensagens mais específicas baseadas no tipo de erro
+    let errorMessage = 'Erro ao ler o QR code. Tente novamente.';
+    
+    if (typeof error === 'string') {
+      if (error.includes('Camera access denied')) {
+        errorMessage = 'Acesso à câmera negado. Verifique as permissões.';
+      } else if (error.includes('No cameras detected')) {
+        errorMessage = 'Nenhuma câmera detectada no dispositivo.';
+      } else if (error.includes('Falha ao acessar as câmeras')) {
+        errorMessage = 'Falha ao acessar as câmeras. Verifique as permissões.';
+      }
+    }
+    
     // Evitar mostrar o mesmo erro repetidamente em um curto período
     if (!window.qrErrorShown) {
       window.qrErrorShown = true;
-      toast.error('Erro ao ler o QR code. Tente novamente.');
+      toast.error(errorMessage);
       
       // Limpar a flag após um tempo
       setTimeout(() => {
@@ -464,7 +477,18 @@ export default function CadastrarDocumento() {
           {showScanner && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
               <div className="bg-white p-4 rounded-lg shadow-lg max-w-md w-full">
-                <h3 className="text-lg font-semibold mb-4">Escaneie o QR Code</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Escanear QR Code</h3>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowScanner(false)}
+                    className="text-sm p-2"
+                    aria-label="Fechar"
+                  >
+                    ✕
+                  </Button>
+                </div>
                 <p className="text-sm text-gray-500 mb-4">
                   Posicione o código QR no centro da câmera para escaneá-lo automaticamente.
                 </p>
@@ -472,15 +496,6 @@ export default function CadastrarDocumento() {
                   onScanSuccess={handleQrCodeResult}
                   onScanError={handleQrCodeError}
                 />
-                <div className="flex justify-end mt-4">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setShowScanner(false)}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
               </div>
             </div>
           )}
