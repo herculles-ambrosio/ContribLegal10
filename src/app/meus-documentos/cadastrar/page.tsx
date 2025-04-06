@@ -1,20 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaFileInvoice, FaCalendarAlt, FaMoneyBillWave, FaUpload } from 'react-icons/fa';
+import { FaFileInvoice, FaCalendarAlt, FaMoneyBillWave, FaUpload, FaQrcode } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
+import Image from 'next/image';
+import dynamic from 'next/dynamic';
+import useDeviceDetect from '@/hooks/useDeviceDetect';
+
+// Importar o scanner de QR code dinamicamente (apenas no cliente)
+const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
+  ssr: false, // Não renderizar no servidor
+  loading: () => <p className="text-center py-4">Carregando scanner...</p>
+});
 
 type TipoDocumento = 'nota_servico' | 'nota_venda' | 'imposto';
 
 export default function CadastrarDocumento() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+  const { isMobile } = useDeviceDetect();
   const [formData, setFormData] = useState({
     tipo: 'nota_servico' as TipoDocumento,
     numero_documento: '',
@@ -113,6 +125,43 @@ export default function CadastrarDocumento() {
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleScanQR = async () => {
+    // Verificar se o navegador suporta API de câmera
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error('Seu navegador não suporta acesso à câmera');
+      return;
+    }
+
+    try {
+      // Solicitar permissão para usar a câmera
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      
+      // Fechar stream imediatamente para não consumir recursos
+      stream.getTracks().forEach(track => track.stop());
+      
+      // Definir que temos permissão e mostrar scanner
+      setCameraPermission(true);
+      setShowScanner(true);
+    } catch (error) {
+      console.error('Erro ao acessar câmera:', error);
+      setCameraPermission(false);
+      toast.error('Não foi possível acessar a câmera. Verifique as permissões.');
+    }
+  };
+
+  const handleQrCodeResult = (result: string) => {
+    // Implementação para processar o resultado do QR code
+    // Por exemplo, preencher o número do documento com o valor do QR code
+    setFormData(prev => ({ ...prev, numero_documento: result }));
+    setShowScanner(false);
+    toast.success('QR Code lido com sucesso!');
+  };
+
+  const handleQrCodeError = (error: any) => {
+    console.error('Erro na leitura do QR code:', error);
+    toast.error('Erro ao ler o QR code. Tente novamente.');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -234,12 +283,24 @@ export default function CadastrarDocumento() {
 
   return (
     <Layout isAuthenticated>
-      <div className="max-w-2xl mx-auto p-4">
-        <Card title="Cadastrar Novo Documento" className="bg-white shadow-lg rounded-lg">
+      <div className="flex justify-center items-center min-h-[70vh]">
+        <Card className="max-w-2xl w-full p-6 shadow-xl" variant="blue-gradient">
+          <div className="flex flex-col items-center mb-8">
+            <Image 
+              src="/LOGO_CL_trans.png" 
+              alt="Contribuinte Legal" 
+              width={180} 
+              height={70} 
+              className="mb-6" 
+              priority
+              style={{ objectFit: 'contain' }}
+            />
+            <h1 className="text-3xl font-bold text-center text-white">Cadastrar Novo Documento</h1>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               <div className="form-group">
-                <label htmlFor="tipo" className="block mb-2 text-sm font-medium text-gray-700">
+                <label htmlFor="tipo" className="block mb-2 text-sm font-medium text-white">
                   Tipo de Documento
                 </label>
                 <select
@@ -247,7 +308,7 @@ export default function CadastrarDocumento() {
                   name="tipo"
                   value={formData.tipo}
                   onChange={handleChange}
-                  className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-4 py-2 border border-blue-400/30 bg-blue-900/20 text-white rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                   required
                 >
                   {tiposDocumento.map(tipo => (
@@ -268,6 +329,7 @@ export default function CadastrarDocumento() {
                 error={errors.numero_documento}
                 fullWidth
                 required
+                variant="dark"
               />
               
               <Input
@@ -280,22 +342,23 @@ export default function CadastrarDocumento() {
                 error={errors.data_emissao}
                 fullWidth
                 required
+                variant="dark"
               />
               
               <div className="relative">
-                <label htmlFor="valor" className="block mb-2 text-sm font-medium text-gray-700">
+                <label htmlFor="valor" className="block mb-2 text-sm font-medium text-white">
                   Valor (R$)
                 </label>
                 <div className="relative rounded-md shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FaMoneyBillWave className="text-gray-400" />
+                    <FaMoneyBillWave className="text-blue-300" />
                   </div>
                   <input
                     type="text"
                     name="valor"
                     id="valor"
-                    className={`pl-10 block w-full border rounded-md py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.valor ? 'border-red-500' : 'border-gray-300'
+                    className={`pl-10 block w-full border rounded-md py-2 px-3 bg-blue-900/20 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                      errors.valor ? 'border-red-500' : 'border-blue-400/30'
                     }`}
                     placeholder="0,00"
                     value={formData.valor}
@@ -304,22 +367,22 @@ export default function CadastrarDocumento() {
                   />
                 </div>
                 {errors.valor && (
-                  <p className="mt-1 text-sm text-red-600">{errors.valor}</p>
+                  <p className="mt-1 text-sm text-red-400">{errors.valor}</p>
                 )}
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-blue-200">
                   Digite o valor no formato: 1234,56 (use vírgula como separador decimal)
                 </p>
               </div>
               
               <div>
-                <label htmlFor="arquivo" className="block mb-2 text-sm font-medium text-gray-700">
+                <label htmlFor="arquivo" className="block mb-2 text-sm font-medium text-white">
                   Arquivo do Documento
                 </label>
                 <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                  <label className="flex flex-col w-full h-32 border-2 border-dashed border-blue-400/30 bg-blue-900/10 rounded-lg cursor-pointer hover:bg-blue-800/20 transition-colors">
                     <div className="flex flex-col items-center justify-center pt-7">
-                      <FaUpload className="w-8 h-8 text-gray-400" />
-                      <p className="pt-1 text-sm text-gray-500">
+                      <FaUpload className="w-8 h-8 text-blue-300" />
+                      <p className="pt-1 text-sm text-blue-200">
                         {formData.arquivo 
                           ? formData.arquivo.name 
                           : 'Clique para selecionar ou arraste o arquivo aqui'}
@@ -336,15 +399,15 @@ export default function CadastrarDocumento() {
                   </label>
                 </div>
                 {errors.arquivo && (
-                  <p className="mt-2 text-sm text-red-600">{errors.arquivo}</p>
+                  <p className="mt-2 text-sm text-red-400">{errors.arquivo}</p>
                 )}
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-blue-200">
                   Formatos aceitos: PDF, JPG, JPEG, PNG (máx. 5MB)
                 </p>
               </div>
             </div>
             
-            <div className="flex justify-end space-x-4">
+            <div className="flex justify-end space-x-4 mt-8">
               <Button 
                 type="button" 
                 variant="secondary"
@@ -352,15 +415,51 @@ export default function CadastrarDocumento() {
               >
                 Cancelar
               </Button>
+              
+              {isMobile && (
+                <Button
+                  type="button"
+                  variant="info"
+                  icon={FaQrcode}
+                  onClick={handleScanQR}
+                  disabled={showScanner}
+                >
+                  Scanear QR
+                </Button>
+              )}
+              
               <Button 
                 type="submit" 
                 variant="primary" 
                 isLoading={isLoading}
+                className="py-3 text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                animated
               >
                 Cadastrar
               </Button>
             </div>
           </form>
+          
+          {showScanner && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
+              <div className="bg-white p-4 rounded-lg shadow-lg max-w-md w-full">
+                <h3 className="text-lg font-semibold mb-4">Escaneie o QR Code</h3>
+                <QrCodeScanner 
+                  onScanSuccess={handleQrCodeResult}
+                  onScanError={handleQrCodeError}
+                />
+                <div className="flex justify-end mt-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowScanner(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     </Layout>
