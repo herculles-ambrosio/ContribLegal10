@@ -75,6 +75,20 @@ body {
     color: #000 !important;
   }
   
+  /* Regra específica para os títulos principais da landing page */
+  section h2 {
+    color: #333 !important;
+    font-weight: 900 !important;
+  }
+  
+  /* Seletores específicos para os títulos principais */
+  h2:after, 
+  h2[class*="text-center"]:after,
+  h2:has(+ .grid) {
+    color: #1a1a1a !important;
+    text-shadow: 0 0 1px rgba(0,0,0,0.5) !important;
+  }
+  
   .bg-gradient-blue h2,
   .bg-gradient-blue h3,
   [class*="bg-gradient"] h2,

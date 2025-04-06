@@ -73,7 +73,7 @@ export default function Home() {
       <section 
         className={`mb-16 transition-all duration-1000 ease-in-out transform ${isVisible.steps ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}
       >
-        <h2 className="text-3xl font-bold text-center mb-12 text-black relative pb-4 after:content-[''] after:absolute after:left-1/2 after:-ml-12 after:bottom-0 after:w-24 after:h-1 after:bg-blue-600 after:rounded-full">Como Funciona</h2>
+        <h2 className="text-3xl font-bold text-center mb-12 text-gray-900 relative pb-4 after:content-[''] after:absolute after:left-1/2 after:-ml-12 after:bottom-0 after:w-24 after:h-1 after:bg-blue-600 after:rounded-full" style={{ color: '#1a1a1a', textShadow: '0 0 1px rgba(0,0,0,0.2)' }}>Como Funciona</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <Card className="text-center p-6 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-2">
             <div className="flex justify-center mb-4">
@@ -117,7 +117,7 @@ export default function Home() {
       <section 
         className={`mb-16 bg-gradient-to-br from-blue-50 to-blue-100 py-12 px-4 rounded-xl shadow-inner transition-all duration-1000 ease-in-out transform ${isVisible.benefits ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}
       >
-        <h2 className="text-3xl font-bold text-center mb-12 text-black relative pb-4 after:content-[''] after:absolute after:left-1/2 after:-ml-12 after:bottom-0 after:w-24 after:h-1 after:bg-blue-600 after:rounded-full">Benefícios</h2>
+        <h2 className="text-3xl font-bold text-center mb-12 text-gray-900 relative pb-4 after:content-[''] after:absolute after:left-1/2 after:-ml-12 after:bottom-0 after:w-24 after:h-1 after:bg-blue-600 after:rounded-full" style={{ color: '#1a1a1a', textShadow: '0 0 1px rgba(0,0,0,0.2)' }}>Benefícios</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="flex items-start bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all">
             <div className="flex-shrink-0 bg-blue-600 rounded-full p-3 text-white mr-4">
