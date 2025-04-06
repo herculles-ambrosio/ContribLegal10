@@ -441,25 +441,24 @@ export default function CadastrarDocumento() {
               </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8">
-              <div>
-                <Button
-                  type="button"
-                  variant="info"
-                  onClick={handleScanQR}
-                  disabled={showScanner}
-                  className="w-10 h-10 flex items-center justify-center rounded-full"
-                  aria-label="Escanear código QR"
-                >
-                  <FaQrcode size={18} />
-                </Button>
-              </div>
-              <div className="flex gap-4 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-4 mt-8 flex-nowrap w-full">
+              <Button
+                type="button"
+                variant="info"
+                onClick={handleScanQR}
+                disabled={showScanner}
+                className="w-10 h-10 min-w-[2.5rem] flex items-center justify-center rounded-full flex-shrink-0"
+                aria-label="Escanear código QR"
+                style={{ marginRight: '0.5rem' }}
+              >
+                <FaQrcode size={18} />
+              </Button>
+              <div className="flex gap-2 md:gap-4 justify-end ml-auto">
                 <Button 
                   type="button" 
                   variant="secondary"
                   onClick={() => router.push('/meus-documentos')}
-                  className="text-sm md:text-base"
+                  className="text-xs md:text-base"
                 >
                   Cancelar
                 </Button>
@@ -468,7 +467,7 @@ export default function CadastrarDocumento() {
                   type="submit" 
                   variant="primary" 
                   isLoading={isLoading}
-                  className="py-3 text-sm md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                  className="py-3 text-xs md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
                   animated
                 >
                   Cadastrar
