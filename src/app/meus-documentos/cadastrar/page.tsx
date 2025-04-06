@@ -363,21 +363,7 @@ export default function CadastrarDocumento() {
                   fullWidth
                   required
                   variant="dark"
-                  style={{ paddingRight: isMobile ? '2.5rem' : undefined }}
                 />
-                {isMobile && (
-                  <Button
-                    type="button"
-                    variant="info"
-                    onClick={handleScanQR}
-                    disabled={showScanner}
-                    className="absolute right-2.5 top-[39px] w-7 h-7 p-0 flex items-center justify-center rounded-md"
-                    aria-label="Escanear código QR"
-                    style={{ zIndex: 10 }}
-                  >
-                    <FaQrcode size={14} />
-                  </Button>
-                )}
               </div>
               
               <Input
@@ -455,25 +441,39 @@ export default function CadastrarDocumento() {
               </div>
             </div>
             
-            <div className="flex justify-end space-x-4 mt-8">
-              <Button 
-                type="button" 
-                variant="secondary"
-                onClick={() => router.push('/meus-documentos')}
-                className="text-sm md:text-base"
-              >
-                Cancelar
-              </Button>
-              
-              <Button 
-                type="submit" 
-                variant="primary" 
-                isLoading={isLoading}
-                className="py-3 text-sm md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
-                animated
-              >
-                Cadastrar
-              </Button>
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8">
+              <div>
+                <Button
+                  type="button"
+                  variant="info"
+                  onClick={handleScanQR}
+                  disabled={showScanner}
+                  className="w-full sm:w-auto flex items-center justify-center text-sm"
+                  aria-label="Escanear código QR"
+                >
+                  <FaQrcode className="mr-2" /> Ler QR Code
+                </Button>
+              </div>
+              <div className="flex gap-4 w-full sm:w-auto justify-end">
+                <Button 
+                  type="button" 
+                  variant="secondary"
+                  onClick={() => router.push('/meus-documentos')}
+                  className="text-sm md:text-base"
+                >
+                  Cancelar
+                </Button>
+                
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  isLoading={isLoading}
+                  className="py-3 text-sm md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                  animated
+                >
+                  Cadastrar
+                </Button>
+              </div>
             </div>
           </form>
           
