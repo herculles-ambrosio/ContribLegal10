@@ -363,7 +363,7 @@ export default function CadastrarDocumento() {
                   fullWidth
                   required
                   variant="dark"
-                  className={`${isMobile ? 'pr-12' : ''}`}
+                  style={{ paddingRight: isMobile ? '2.5rem' : undefined }}
                 />
                 {isMobile && (
                   <Button
@@ -371,10 +371,11 @@ export default function CadastrarDocumento() {
                     variant="info"
                     onClick={handleScanQR}
                     disabled={showScanner}
-                    className="absolute right-2 top-9 w-9 h-9 p-0 flex items-center justify-center rounded-md"
+                    className="absolute right-2.5 top-[39px] w-7 h-7 p-0 flex items-center justify-center rounded-md"
                     aria-label="Escanear código QR"
+                    style={{ zIndex: 10 }}
                   >
-                    <FaQrcode size={16} />
+                    <FaQrcode size={14} />
                   </Button>
                 )}
               </div>

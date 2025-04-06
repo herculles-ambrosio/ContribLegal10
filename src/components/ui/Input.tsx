@@ -31,7 +31,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
       ${error ? 'border-red-500' : 'border'}
       ${fullWidth ? 'w-full' : ''}
       ${className}
-    `;
+    `.trim();
 
     const labelClasses = `block mb-2 text-sm font-medium ${
       isDark ? 'text-blue-100' : 'text-gray-700'
