@@ -82,7 +82,7 @@ export default function Home() {
               </div>
             </div>
             <h3 className="text-xl font-semibold mb-3 text-blue-800">1. Cadastre seus documentos</h3>
-            <p className="text-gray-600">
+            <p className="text-gray-800">
               Cadastre suas notas fiscais de serviço, vendas e comprovantes de pagamento de impostos.
             </p>
           </Card>
@@ -94,7 +94,7 @@ export default function Home() {
               </div>
             </div>
             <h3 className="text-xl font-semibold mb-3 text-yellow-700">2. Receba números da sorte</h3>
-            <p className="text-gray-600">
+            <p className="text-gray-800">
               Para cada documento cadastrado, você recebe um número que concorre nos sorteios.
             </p>
           </Card>
@@ -106,7 +106,7 @@ export default function Home() {
               </div>
             </div>
             <h3 className="text-xl font-semibold mb-3 text-green-700">3. Concorra a prêmios</h3>
-            <p className="text-gray-600">
+            <p className="text-gray-800">
               Você concorre automaticamente aos sorteios realizados periodicamente.
             </p>
           </Card>
@@ -127,7 +127,7 @@ export default function Home() {
             </div>
             <div>
               <h3 className="text-xl font-semibold mb-2 text-blue-800">Sorteios de Prêmios</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-800">
                 Concorra a prêmios incríveis apenas por manter seus impostos em dia e cadastrar suas notas fiscais.
               </p>
             </div>
@@ -141,7 +141,7 @@ export default function Home() {
             </div>
             <div>
               <h3 className="text-xl font-semibold mb-2 text-blue-800">Organização Financeira</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-800">
                 Mantenha todos os seus documentos fiscais organizados em um só lugar, com fácil acesso.
               </p>
             </div>
@@ -155,7 +155,7 @@ export default function Home() {
             </div>
             <div>
               <h3 className="text-xl font-semibold mb-2 text-blue-800">Incentivo à Cidadania Fiscal</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-800">
                 Contribua para o desenvolvimento do município ao mesmo tempo que é recompensado.
               </p>
             </div>
@@ -169,7 +169,7 @@ export default function Home() {
             </div>
             <div>
               <h3 className="text-xl font-semibold mb-2 text-blue-800">Processo Simples</h3>
-              <p className="text-gray-600">
+              <p className="text-gray-800">
                 Interface intuitiva e fácil de usar, cadastre seus documentos em poucos cliques.
               </p>
             </div>

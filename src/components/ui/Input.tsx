@@ -34,7 +34,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     `.trim();
 
     const labelClasses = `block mb-2 text-sm font-medium ${
-      isDark ? 'text-blue-100' : 'text-gray-700'
+      isDark ? 'text-blue-100' : 'text-gray-900'
     }`;
 
     const iconClasses = `h-5 w-5 ${
@@ -73,4 +73,4 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 
 Input.displayName = 'Input';
 
-export default Input; 
+export default Input;
