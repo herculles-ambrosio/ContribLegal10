@@ -448,10 +448,10 @@ export default function CadastrarDocumento() {
                   variant="info"
                   onClick={handleScanQR}
                   disabled={showScanner}
-                  className="w-full sm:w-auto flex items-center justify-center text-sm"
+                  className="w-10 h-10 flex items-center justify-center rounded-full"
                   aria-label="Escanear código QR"
                 >
-                  <FaQrcode className="mr-2" /> Ler QR Code
+                  <FaQrcode size={18} />
                 </Button>
               </div>
               <div className="flex gap-4 w-full sm:w-auto justify-end">
