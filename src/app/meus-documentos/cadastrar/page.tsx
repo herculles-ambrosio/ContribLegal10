@@ -13,6 +13,13 @@ import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import useDeviceDetect from '@/hooks/useDeviceDetect';
 
+// Extender a interface Window para incluir nossa propriedade
+declare global {
+  interface Window {
+    qrErrorShown?: boolean;
+  }
+}
+
 // Importar o scanner de QR code dinamicamente (apenas no cliente)
 const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
   ssr: false, // Não renderizar no servidor
@@ -161,7 +168,17 @@ export default function CadastrarDocumento() {
 
   const handleQrCodeError = (error: any) => {
     console.error('Erro na leitura do QR code:', error);
-    toast.error('Erro ao ler o QR code. Tente novamente.');
+    
+    // Evitar mostrar o mesmo erro repetidamente em um curto período
+    if (!window.qrErrorShown) {
+      window.qrErrorShown = true;
+      toast.error('Erro ao ler o QR code. Tente novamente.');
+      
+      // Limpar a flag após um tempo
+      setTimeout(() => {
+        window.qrErrorShown = false;
+      }, 5000);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -444,6 +461,9 @@ export default function CadastrarDocumento() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
               <div className="bg-white p-4 rounded-lg shadow-lg max-w-md w-full">
                 <h3 className="text-lg font-semibold mb-4">Escaneie o QR Code</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Posicione o código QR no centro da câmera para escaneá-lo automaticamente.
+                </p>
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeResult}
                   onScanError={handleQrCodeError}

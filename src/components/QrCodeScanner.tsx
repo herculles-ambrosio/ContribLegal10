@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
 interface QrCodeScannerProps {
@@ -11,6 +11,9 @@ interface QrCodeScannerProps {
 
 export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: QrCodeScannerProps) {
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const lastErrorRef = useRef<string>('');
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Se o componente for renderizado no servidor, não faça nada
@@ -25,6 +28,12 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
       }
     }
 
+    // Limpar timeout de erro, se existir
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
+
     // Configurações do scanner
     const config = {
       fps: 10,
@@ -32,6 +41,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
       rememberLastUsedCamera: true,
       // Configurações específicas para dispositivos móveis
       aspectRatio: 1.0,
+      formatsToSupport: [0], // QR_CODE apenas
       showTorchButtonIfSupported: true,
       showZoomSliderIfSupported: true,
       defaultZoomValueIfSupported: 2,
@@ -47,6 +57,9 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
 
       // Definir callbacks de sucesso e erro
       const onScanSuccessCallback = (decodedText: string) => {
+        // Marcar que não estamos mais escaneando
+        setIsScanning(false);
+        
         // Se o scanner ainda existir, limpe-o após um sucesso
         if (scannerRef.current) {
           try {
@@ -60,20 +73,45 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
         onScanSuccess(decodedText);
       };
 
-      const onScanFailureCallback = (error: any) => {
-        // Não reportar erros regulares de scan (quando não encontra QR code na imagem)
-        if (error?.includes?.('No QR code found')) return;
+      const onScanFailureCallback = (errorMessage: string | Object) => {
+        // Converter o erro para string
+        const errorStr = typeof errorMessage === 'string' 
+          ? errorMessage 
+          : JSON.stringify(errorMessage);
+        
+        // Ignorar erros comuns durante o escaneamento
+        if (
+          errorStr.includes('No QR code found') || 
+          errorStr.includes('No barcode or QR code detected') ||
+          errorStr.includes('Scanner paused')
+        ) {
+          return;
+        }
+        
+        // Se este erro já foi reportado recentemente, não reportá-lo novamente
+        if (errorStr === lastErrorRef.current) {
+          return;
+        }
+        
+        // Atualizar o último erro
+        lastErrorRef.current = errorStr;
         
         // Chamar o callback de erro se fornecido
         if (onScanError) {
-          onScanError(error);
+          onScanError(errorStr);
         } else {
-          console.error('Erro no scan:', error);
+          console.error('Erro no scan:', errorStr);
         }
+        
+        // Limpar o último erro após um tempo para permitir que ele seja reportado novamente
+        errorTimeoutRef.current = setTimeout(() => {
+          lastErrorRef.current = '';
+        }, 5000);
       };
 
       // Renderizar o scanner e começar a escanear
       scanner.render(onScanSuccessCallback, onScanFailureCallback);
+      setIsScanning(true);
       
       // Armazenar referência
       scannerRef.current = scanner;
@@ -84,6 +122,13 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
 
     // Limpar ao desmontar
     return () => {
+      // Limpar timeout de erro, se existir
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+        errorTimeoutRef.current = null;
+      }
+      
+      // Limpar scanner, se existir
       if (scannerRef.current) {
         try {
           scannerRef.current.clear();
@@ -97,6 +142,11 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
   return (
     <div className="qr-scanner-container">
       <div id="qr-reader" className="w-full"></div>
+      {isScanning && (
+        <p className="text-center text-blue-600 mt-2">
+          Aponte a câmera para o QR code...
+        </p>
+      )}
       
       <style jsx>{`
         .qr-scanner-container {
@@ -136,6 +186,10 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           border-radius: 4px !important;
           border: 1px solid #d1d5db !important;
           margin: 8px 0 !important;
+        }
+        
+        :global(#qr-reader__status_span) {
+          display: none !important; /* Esconder mensagens de status da biblioteca */
         }
       `}</style>
     </div>
