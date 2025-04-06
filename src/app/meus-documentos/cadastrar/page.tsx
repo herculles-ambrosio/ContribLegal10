@@ -159,10 +159,12 @@ export default function CadastrarDocumento() {
   };
 
   const handleQrCodeResult = (result: string) => {
-    // Implementação para processar o resultado do QR code
-    // Por exemplo, preencher o número do documento com o valor do QR code
+    // Substituir o valor do campo de número de documento com o resultado do QR code
     setFormData(prev => ({ ...prev, numero_documento: result }));
+    
+    // Fechar o scanner automaticamente
     setShowScanner(false);
+    
     toast.success('QR Code lido com sucesso!');
   };
 
@@ -349,18 +351,33 @@ export default function CadastrarDocumento() {
                 </select>
               </div>
               
-              <Input
-                label="Número do Documento"
-                name="numero_documento"
-                placeholder="Número da nota ou comprovante"
-                icon={FaFileInvoice}
-                value={formData.numero_documento}
-                onChange={handleChange}
-                error={errors.numero_documento}
-                fullWidth
-                required
-                variant="dark"
-              />
+              <div className="relative">
+                <Input
+                  label="Número do Documento"
+                  name="numero_documento"
+                  placeholder="Número da nota ou comprovante"
+                  icon={FaFileInvoice}
+                  value={formData.numero_documento}
+                  onChange={handleChange}
+                  error={errors.numero_documento}
+                  fullWidth
+                  required
+                  variant="dark"
+                  className={`${isMobile ? 'pr-12' : ''}`}
+                />
+                {isMobile && (
+                  <Button
+                    type="button"
+                    variant="info"
+                    onClick={handleScanQR}
+                    disabled={showScanner}
+                    className="absolute right-2 top-9 w-9 h-9 p-0 flex items-center justify-center rounded-md"
+                    aria-label="Escanear código QR"
+                  >
+                    <FaQrcode size={16} />
+                  </Button>
+                )}
+              </div>
               
               <Input
                 label="Data de Emissão"
@@ -446,21 +463,6 @@ export default function CadastrarDocumento() {
               >
                 Cancelar
               </Button>
-              
-              {isMobile && (
-                <Button
-                  type="button"
-                  variant="info"
-                  icon={FaQrcode}
-                  onClick={handleScanQR}
-                  disabled={showScanner}
-                  className="text-sm md:text-base flex items-center justify-center"
-                  aria-label="Escanear código QR"
-                >
-                  <span className="hidden sm:inline">QR Code</span>
-                  <FaQrcode className="sm:hidden" size={18} />
-                </Button>
-              )}
               
               <Button 
                 type="submit" 

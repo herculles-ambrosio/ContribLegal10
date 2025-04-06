@@ -109,9 +109,13 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           scannerRef.current.stop()
             .then(() => {
               setIsScanning(false);
+              // Chamar o callback de sucesso imediatamente
               onScanSuccess(decodedText);
             })
             .catch(error => console.error('Erro ao parar scanner após sucesso:', error));
+        } else {
+          // Se por algum motivo o scanner não estiver disponível, ainda assim chamar o callback
+          onScanSuccess(decodedText);
         }
       };
 
