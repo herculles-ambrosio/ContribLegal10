@@ -369,7 +369,7 @@ export default function Registro() {
                     name="estado"
                     value={formData.estado}
                     onChange={handleChange}
-                    className="block w-full h-[42px] px-4 border border-blue-400/30 bg-blue-900/20 text-white rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full h-[48px] px-4 border border-blue-400/30 bg-blue-900/20 text-white rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Selecione...</option>
                     {ESTADOS.map(estado => (
