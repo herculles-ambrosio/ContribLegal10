@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Usuario, Documento } from '@/types/supabase';
-import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter } from 'react-icons/fa';
 import Layout from '@/components/Layout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
@@ -87,7 +87,9 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuariosFiltrados, setUsuariosFiltrados] = useState<Usuario[]>([]);
   const [documentos, setDocumentos] = useState<DocumentoComUsuario[]>([]);
+  const [documentosFiltrados, setDocumentosFiltrados] = useState<DocumentoComUsuario[]>([]);
   const [activeTab, setActiveTab] = useState<'documentos' | 'usuarios'>('documentos');
   const [editingUsuarioId, setEditingUsuarioId] = useState<string | null>(null);
   const [nomeUsuarioLogado, setNomeUsuarioLogado] = useState('');
@@ -99,6 +101,14 @@ export default function AdminDashboard() {
   const [totalAguardandoValidacao, setTotalAguardandoValidacao] = useState(0);
   const [totalInvalidados, setTotalInvalidados] = useState(0);
   const [operacaoEmAndamento, setOperacaoEmAndamento] = useState(false);
+  // Filtros para aba Documentos
+  const [filtroContribuinte, setFiltroContribuinte] = useState<string>('');
+  const [filtroTipoDocumento, setFiltroTipoDocumento] = useState<string>('');
+  const [filtroCpfCnpj, setFiltroCpfCnpj] = useState<string>('');
+  const [filtroStatus, setFiltroStatus] = useState<string>('');
+  // Filtros para aba Usuários
+  const [filtroUsuarioNome, setFiltroUsuarioNome] = useState<string>('');
+  const [filtroUsuarioCpfCnpj, setFiltroUsuarioCpfCnpj] = useState<string>('');
   
   useEffect(() => {
     const verificarUsuarioMaster = async () => {
@@ -781,6 +791,7 @@ export default function AdminDashboard() {
     
     setTotalDocumentos(total);
     setValorTotalDocumentos(valorTotal);
+    setDocumentosFiltrados(documentos);
   }, [documentos]);
   
   // Atualizar totalizadores quando usuários mudam
@@ -790,7 +801,77 @@ export default function AdminDashboard() {
     
     setTotalUsuarios(total);
     setTotalAdmins(admins);
+    setUsuariosFiltrados(usuarios);
   }, [usuarios]);
+  
+  // Aplicar filtros nos documentos
+  useEffect(() => {
+    let filtrados = [...documentos];
+    
+    // Filtro por nome do contribuinte
+    if (filtroContribuinte) {
+      const termoPesquisa = filtroContribuinte.toLowerCase();
+      filtrados = filtrados.filter(doc => 
+        doc.usuarios?.nome_completo?.toLowerCase().includes(termoPesquisa)
+      );
+    }
+    
+    // Filtro por tipo de documento
+    if (filtroTipoDocumento) {
+      filtrados = filtrados.filter(doc => doc.tipo === filtroTipoDocumento);
+    }
+    
+    // Filtro por CPF/CNPJ
+    if (filtroCpfCnpj) {
+      const termoPesquisa = filtroCpfCnpj.toLowerCase().replace(/[^\d]/g, '');
+      filtrados = filtrados.filter(doc => 
+        doc.usuarios?.cpf_cnpj?.toLowerCase().replace(/[^\d]/g, '').includes(termoPesquisa)
+      );
+    }
+    
+    // Filtro por status
+    if (filtroStatus) {
+      filtrados = filtrados.filter(doc => doc.status === filtroStatus);
+    }
+    
+    setDocumentosFiltrados(filtrados);
+  }, [filtroContribuinte, filtroTipoDocumento, filtroCpfCnpj, filtroStatus, documentos]);
+  
+  // Aplicar filtros nos usuários
+  useEffect(() => {
+    let filtrados = [...usuarios];
+    
+    // Filtro por nome do usuário
+    if (filtroUsuarioNome) {
+      const termoPesquisa = filtroUsuarioNome.toLowerCase();
+      filtrados = filtrados.filter(usuario => 
+        usuario.nome_completo?.toLowerCase().includes(termoPesquisa)
+      );
+    }
+    
+    // Filtro por CPF/CNPJ
+    if (filtroUsuarioCpfCnpj) {
+      const termoPesquisa = filtroUsuarioCpfCnpj.toLowerCase().replace(/[^\d]/g, '');
+      filtrados = filtrados.filter(usuario => 
+        usuario.cpf_cnpj?.toLowerCase().replace(/[^\d]/g, '').includes(termoPesquisa)
+      );
+    }
+    
+    setUsuariosFiltrados(filtrados);
+  }, [filtroUsuarioNome, filtroUsuarioCpfCnpj, usuarios]);
+  
+  // Calcular valor total dos documentos filtrados
+  const calcularValorTotal = () => {
+    return documentosFiltrados.reduce((sum, doc) => sum + (Number(doc.valor) || 0), 0);
+  };
+  
+  // Função para limpar filtros
+  const limparFiltros = () => {
+    setFiltroContribuinte('');
+    setFiltroTipoDocumento('');
+    setFiltroCpfCnpj('');
+    setFiltroStatus('');
+  };
   
   const atualizarStatusDocumento = async (id: string, status: 'VALIDADO' | 'INVÁLIDO' | 'AGUARDANDO VALIDAÇÃO') => {
     try {
@@ -1051,9 +1132,100 @@ export default function AdminDashboard() {
         
         {activeTab === 'documentos' && (
           <div className="p-6">
+            {/* Filtros */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium mb-3 flex items-center">
+                <FaFilter className="mr-2 text-blue-500" />
+                Filtros
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
+                    Contribuinte
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroContribuinte"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Nome do contribuinte"
+                    value={filtroContribuinte}
+                    onChange={(e) => setFiltroContribuinte(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de Documento
+                  </label>
+                  <select
+                    id="filtroTipoDocumento"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={filtroTipoDocumento}
+                    onChange={(e) => setFiltroTipoDocumento(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="nota_servico">Nota Fiscal de Serviço</option>
+                    <option value="nota_venda">Nota Fiscal de Venda</option>
+                    <option value="imposto">Comprovante de Imposto</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="filtroCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                    CPF/CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroCpfCnpj"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="CPF ou CNPJ"
+                    value={filtroCpfCnpj}
+                    onChange={(e) => setFiltroCpfCnpj(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                    Status
+                  </label>
+                  <select
+                    id="filtroStatus"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={filtroStatus}
+                    onChange={(e) => setFiltroStatus(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="VALIDADO">Validado</option>
+                    <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
+                    <option value="INVÁLIDO">Inválido</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={limparFiltros}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+            
+            {/* Totalizadores dos documentos filtrados */}
+            <div className="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="flex flex-wrap justify-between items-center">
+                <div className="text-blue-800">
+                  <span className="font-medium">Documentos filtrados:</span> {documentosFiltrados.length} de {totalDocumentos}
+                </div>
+                <div className="text-blue-800">
+                  <span className="font-medium">Valor total:</span> {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }).format(calcularValorTotal())}
+                </div>
+              </div>
+            </div>
+            
             <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-green-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-green-800">Validados</h3>
+                <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
                 <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
               </div>
               <div className="bg-yellow-50 p-4 rounded-lg shadow">
@@ -1088,7 +1260,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {documentos.map(doc => {
+                  {documentosFiltrados.map(doc => {
                     const usuario = doc.usuarios;
                     return (
                       <tr key={doc.id} className="border-b hover:bg-gray-50">
@@ -1168,6 +1340,53 @@ export default function AdminDashboard() {
         
         {activeTab === 'usuarios' && (
           <div className="p-6">
+            {/* Filtros */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium mb-3 flex items-center">
+                <FaFilter className="mr-2 text-blue-500" />
+                Filtros
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
+                    Usuário
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroUsuarioNome"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Nome do usuário"
+                    value={filtroUsuarioNome}
+                    onChange={(e) => setFiltroUsuarioNome(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="filtroUsuarioCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                    CPF/CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroUsuarioCpfCnpj"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="CPF ou CNPJ"
+                    value={filtroUsuarioCpfCnpj}
+                    onChange={(e) => setFiltroUsuarioCpfCnpj(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => {
+                    setFiltroUsuarioNome('');
+                    setFiltroUsuarioCpfCnpj('');
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+            
             <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-purple-50 p-4 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
@@ -1179,7 +1398,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             
-            {usuarios.length === 0 && (
+            {usuariosFiltrados.length === 0 && (
               <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
                 <h3 className="text-lg font-medium text-red-800 mb-2">Erro ao carregar usuários</h3>
                 <p className="mb-3">Não foi possível carregar a lista de usuários devido a problemas de configuração ou permissão.</p>
@@ -1247,7 +1466,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {usuarios.map(user => (
+                  {usuariosFiltrados.map(user => (
                     <tr key={user.id} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4">{user.nome_completo}</td>
                       <td className="py-3 px-4">{user.email}</td>

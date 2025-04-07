@@ -92,6 +92,25 @@ export default function CadastrarDocumento() {
     }
   };
 
+  // Função para formatar o valor como moeda BRL quando o campo perde o foco
+  const handleValorBlur = () => {
+    if (formData.valor) {
+      // Converte para número (substituindo vírgula por ponto)
+      const numeroValor = parseFloat(formData.valor.replace(',', '.')) || 0;
+      
+      // Formata como valor monetário brasileiro (duas casas decimais)
+      const valorFormatado = numeroValor.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+      
+      setFormData(prev => ({ ...prev, valor: valorFormatado }));
+    } else {
+      // Se o campo estiver vazio, preenche com 0,00
+      setFormData(prev => ({ ...prev, valor: '0,00' }));
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     setFormData(prev => ({ ...prev, arquivo: file }));
@@ -397,6 +416,7 @@ export default function CadastrarDocumento() {
                     placeholder="0,00"
                     value={formData.valor}
                     onChange={handleChange}
+                    onBlur={handleValorBlur}
                     required
                   />
                 </div>
