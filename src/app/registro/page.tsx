@@ -10,6 +10,7 @@ import { FaEnvelope, FaLock, FaUser, FaIdCard, FaPhone, FaMapMarkerAlt } from 'r
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
+import Image from 'next/image';
 
 const ESTADOS = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -233,8 +234,20 @@ export default function Registro() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto p-4">
-        <Card title="Cadastro de Contribuinte" className="bg-white shadow-lg rounded-lg">
+      <div className="flex justify-center items-center min-h-[70vh]">
+        <Card className="max-w-2xl w-full p-6 shadow-xl" variant="blue-gradient">
+          <div className="flex flex-col items-center mb-8">
+            <Image 
+              src="/LOGO_CL_trans.png" 
+              alt="Contribuinte Legal" 
+              width={180} 
+              height={70} 
+              className="mb-6" 
+              priority
+              style={{ objectFit: 'contain' }}
+            />
+            <h1 className="text-3xl font-bold text-center text-white">Cadastro de Contribuinte</h1>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               <Input
@@ -248,7 +261,7 @@ export default function Registro() {
                 error={errors.email}
                 fullWidth
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                variant="dark"
               />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -263,7 +276,7 @@ export default function Registro() {
                   error={errors.password}
                   fullWidth
                   required
-                  className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                  variant="dark"
                 />
                 
                 <Input
@@ -277,7 +290,7 @@ export default function Registro() {
                   error={errors.confirmPassword}
                   fullWidth
                   required
-                  className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                  variant="dark"
                 />
               </div>
               
@@ -291,55 +304,37 @@ export default function Registro() {
                 error={errors.nome_completo}
                 fullWidth
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                variant="dark"
               />
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    CPF/CNPJ
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      name="cpf_cnpj"
-                      value={formData.cpf_cnpj}
-                      onChange={handleChange}
-                      maxLength={18}
-                      className={`pl-10 w-full rounded-md border ${
-                        errors.cpf_cnpj ? 'border-red-500' : 'border-gray-300'
-                      } focus:border-blue-500 focus:ring-blue-500 transition-all duration-200`}
-                      placeholder="000.000.000-00"
-                    />
-                    <FaIdCard className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {errors.cpf_cnpj && (
-                    <p className="mt-1 text-xs text-red-500">{errors.cpf_cnpj}</p>
-                  )}
-                </div>
+                <Input
+                  label="CPF/CNPJ"
+                  name="cpf_cnpj"
+                  placeholder="000.000.000-00"
+                  icon={FaIdCard}
+                  value={formData.cpf_cnpj}
+                  onChange={handleChange}
+                  error={errors.cpf_cnpj}
+                  fullWidth
+                  required
+                  variant="dark"
+                  maxLength={18}
+                />
                 
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefone
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      name="telefone"
-                      value={formData.telefone}
-                      onChange={handleChange}
-                      maxLength={15}
-                      className={`pl-10 w-full rounded-md border ${
-                        errors.telefone ? 'border-red-500' : 'border-gray-300'
-                      } focus:border-blue-500 focus:ring-blue-500 transition-all duration-200`}
-                      placeholder="(00) 00000-0000"
-                    />
-                    <FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  </div>
-                  {errors.telefone && (
-                    <p className="mt-1 text-xs text-red-500">{errors.telefone}</p>
-                  )}
-                </div>
+                <Input
+                  label="Telefone"
+                  name="telefone"
+                  placeholder="(00) 00000-0000"
+                  icon={FaPhone}
+                  value={formData.telefone}
+                  onChange={handleChange}
+                  error={errors.telefone}
+                  fullWidth
+                  required
+                  variant="dark"
+                  maxLength={15}
+                />
               </div>
               
               <Input
@@ -351,7 +346,7 @@ export default function Registro() {
                 onChange={handleChange}
                 error={errors.endereco}
                 fullWidth
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                variant="dark"
               />
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -363,20 +358,18 @@ export default function Registro() {
                   onChange={handleChange}
                   error={errors.cidade}
                   fullWidth
-                  className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                  variant="dark"
                 />
                 
                 <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block mb-2 text-sm font-medium text-white">
                     Estado
                   </label>
                   <select
                     name="estado"
                     value={formData.estado}
                     onChange={handleChange}
-                    className={`w-full rounded-md border ${
-                      errors.estado ? 'border-red-500' : 'border-gray-300'
-                    } focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 py-2 px-3`}
+                    className="block w-full px-4 py-2 border border-blue-400/30 bg-blue-900/20 text-white rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Selecione...</option>
                     {ESTADOS.map(estado => (
@@ -386,29 +379,21 @@ export default function Registro() {
                     ))}
                   </select>
                   {errors.estado && (
-                    <p className="mt-1 text-xs text-red-500">{errors.estado}</p>
+                    <p className="mt-1 text-xs text-red-400">{errors.estado}</p>
                   )}
                 </div>
                 
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    CEP
-                  </label>
-                  <input
-                    type="text"
-                    name="cep"
-                    value={formData.cep}
-                    onChange={handleChange}
-                    maxLength={9}
-                    className={`w-full rounded-md border ${
-                      errors.cep ? 'border-red-500' : 'border-gray-300'
-                    } focus:border-blue-500 focus:ring-blue-500 transition-all duration-200`}
-                    placeholder="00000-000"
-                  />
-                  {errors.cep && (
-                    <p className="mt-1 text-xs text-red-500">{errors.cep}</p>
-                  )}
-                </div>
+                <Input
+                  label="CEP"
+                  name="cep"
+                  placeholder="00000-000"
+                  value={formData.cep}
+                  onChange={handleChange}
+                  error={errors.cep}
+                  fullWidth
+                  variant="dark"
+                  maxLength={9}
+                />
               </div>
             </div>
             
@@ -418,14 +403,15 @@ export default function Registro() {
                 variant="primary" 
                 isLoading={isLoading}
                 fullWidth
-                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all duration-200"
+                className="py-3 font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                animated
               >
                 Cadastrar
               </Button>
               
-              <p className="text-center text-sm text-gray-600">
+              <p className="text-center text-sm text-white">
                 Já possui uma conta?{' '}
-                <Link href="/login" className="text-blue-600 hover:text-blue-700 hover:underline transition-all duration-200">
+                <Link href="/login" className="text-blue-300 hover:text-blue-200 hover:underline transition-all duration-200">
                   Faça login
                 </Link>
               </p>
