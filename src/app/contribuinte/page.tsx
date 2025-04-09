@@ -213,7 +213,7 @@ export default function PainelContribuinte() {
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-medium mb-1">Total de Documentos</h3>
+              <h3 className="text-lg font-medium mb-1">Total de Cupons</h3>
               {isLoading ? (
                 <div className="animate-pulse h-8 w-20 bg-white/20 rounded"></div>
               ) : (
@@ -228,7 +228,7 @@ export default function PainelContribuinte() {
         <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-medium mb-1">Documentos Validados</h3>
+              <h3 className="text-lg font-medium mb-1">Cupons Validados</h3>
               {isLoading ? (
                 <div className="animate-pulse h-8 w-20 bg-white/20 rounded"></div>
               ) : (
