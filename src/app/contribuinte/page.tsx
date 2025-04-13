@@ -5,7 +5,7 @@ import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy } from 'react-icons/fa';
+import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy, FaFileContract } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -143,7 +143,12 @@ export default function PainelContribuinte() {
       case 'nota_servico':
         return {
           label: 'Nota Fiscal de Serviço',
-          icon: FaFileAlt
+          icon: FaFileContract
+        };
+      case 'cupom_fiscal':
+        return {
+          label: 'Cupom Fiscal',
+          icon: FaReceipt
         };
       case 'nota_venda':
         return {

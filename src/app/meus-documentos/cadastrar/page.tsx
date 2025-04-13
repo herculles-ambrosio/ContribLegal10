@@ -26,7 +26,7 @@ const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
   loading: () => <p className="text-center py-4">Carregando scanner...</p>
 });
 
-type TipoDocumento = 'nota_servico' | 'nota_venda' | 'imposto';
+type TipoDocumento = 'nota_servico' | 'cupom_fiscal' | 'imposto';
 
 export default function CadastrarDocumento() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function CadastrarDocumento() {
 
   const tiposDocumento = [
     { value: 'nota_servico', label: 'Nota Fiscal de Serviço' },
-    { value: 'nota_venda', label: 'Cupom Fiscal' },
+    { value: 'cupom_fiscal', label: 'Cupom Fiscal' },
     { value: 'imposto', label: 'Comprovante de Pagamento de Imposto' }
   ];
 
