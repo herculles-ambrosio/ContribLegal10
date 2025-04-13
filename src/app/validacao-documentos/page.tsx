@@ -145,7 +145,7 @@ export default function ValidacaoDocumentos() {
         };
       case 'nota_venda':
         return {
-          label: 'Nota Fiscal de Venda',
+          label: 'Cupom Fiscal',
           icon: FaReceipt
         };
       case 'imposto':
@@ -335,7 +335,7 @@ export default function ValidacaoDocumentos() {
               >
                 <option value="todos">Todos os tipos</option>
                 <option value="nota_servico">Notas de Serviço</option>
-                <option value="nota_venda">Notas de Venda</option>
+                <option value="nota_venda">Cupom Fiscal</option>
                 <option value="imposto">Comprovantes de Impostos</option>
               </select>
             </div>

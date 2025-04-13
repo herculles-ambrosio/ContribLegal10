@@ -1164,8 +1164,8 @@ export default function AdminDashboard() {
                   >
                     <option value="">Todos</option>
                     <option value="nota_servico">Nota Fiscal de Serviço</option>
-                    <option value="nota_venda">Nota Fiscal de Venda</option>
-                    <option value="imposto">Comprovante de Imposto</option>
+                    <option value="nota_venda">Cupom Fiscal</option>
+                    <option value="imposto">Comprovante de Pagamento de Imposto</option>
                   </select>
                 </div>
                 <div>

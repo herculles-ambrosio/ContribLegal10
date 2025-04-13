@@ -45,7 +45,7 @@ export default function CadastrarDocumento() {
 
   const tiposDocumento = [
     { value: 'nota_servico', label: 'Nota Fiscal de Serviço' },
-    { value: 'nota_venda', label: 'Nota Fiscal de Venda' },
+    { value: 'nota_venda', label: 'Cupom Fiscal' },
     { value: 'imposto', label: 'Comprovante de Pagamento de Imposto' }
   ];
 
@@ -57,27 +57,16 @@ export default function CadastrarDocumento() {
       // Remove tudo que não for número ou vírgula
       let numericValue = value.replace(/[^\d,]/g, '');
       
-      // Substitui vírgula por ponto para processamento interno
-      numericValue = numericValue.replace(',', '.');
-      
-      // Garante apenas um ponto decimal
-      const parts = numericValue.split('.');
+      // Garante apenas uma vírgula
+      const parts = numericValue.split(',');
       let formattedValue = parts[0];
-      
-      // Limita a parte inteira a 15 dígitos
-      if (formattedValue.length > 15) {
-        formattedValue = formattedValue.slice(0, 15);
-      }
       
       // Adiciona parte decimal limitada a 2 casas
       if (parts.length > 1) {
-        formattedValue += '.' + parts[1].slice(0, 2);
+        formattedValue += ',' + parts[1].slice(0, 2);
       }
       
-      // Formata para exibição com vírgula como separador decimal
-      const displayValue = formattedValue.replace('.', ',');
-      
-      setFormData(prev => ({ ...prev, [name]: displayValue }));
+      setFormData(prev => ({ ...prev, [name]: formattedValue }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -95,16 +84,24 @@ export default function CadastrarDocumento() {
   // Função para formatar o valor como moeda BRL quando o campo perde o foco
   const handleValorBlur = () => {
     if (formData.valor) {
-      // Converte para número (substituindo vírgula por ponto)
-      const numeroValor = parseFloat(formData.valor.replace(',', '.')) || 0;
-      
-      // Formata como valor monetário brasileiro (duas casas decimais)
-      const valorFormatado = numeroValor.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      });
-      
-      setFormData(prev => ({ ...prev, valor: valorFormatado }));
+      try {
+        // Converte para número (substituindo vírgula por ponto)
+        const valorTexto = formData.valor.replace(/\./g, '').replace(',', '.');
+        const numeroValor = parseFloat(valorTexto);
+        
+        if (!isNaN(numeroValor)) {
+          // Formata como valor monetário brasileiro (duas casas decimais)
+          const valorFormatado = numeroValor.toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+          
+          setFormData(prev => ({ ...prev, valor: valorFormatado }));
+        }
+      } catch (error) {
+        console.error('Erro ao formatar valor:', error);
+        // Em caso de erro, deixa o valor como está
+      }
     } else {
       // Se o campo estiver vazio, preenche com 0,00
       setFormData(prev => ({ ...prev, valor: '0,00' }));
@@ -138,9 +135,15 @@ export default function CadastrarDocumento() {
     if (!formData.valor) {
       newErrors.valor = 'Valor é obrigatório';
     } else {
-      // Converter valor com vírgula para formato numérico com ponto
-      const valorNumerico = Number(formData.valor.replace(',', '.'));
-      if (isNaN(valorNumerico) || valorNumerico <= 0) {
+      try {
+        // Converte valores com formato brasileiro (vírgula como separador decimal)
+        const valorTexto = formData.valor.replace(/\./g, '').replace(',', '.');
+        const valorNumerico = parseFloat(valorTexto);
+        
+        if (isNaN(valorNumerico) || valorNumerico <= 0) {
+          newErrors.valor = 'Valor deve ser um número positivo';
+        }
+      } catch (error) {
         newErrors.valor = 'Valor deve ser um número positivo';
       }
     }
@@ -286,7 +289,8 @@ export default function CadastrarDocumento() {
       console.log('Criando registro do documento...');
       
       // Formatar o valor para garantir 2 casas decimais (convertendo vírgula para ponto)
-      const valorNumerico = parseFloat(formData.valor.replace(',', '.'));
+      const valorTexto = formData.valor.replace(/\./g, '').replace(',', '.');
+      const valorNumerico = parseFloat(valorTexto);
       const valorFormatado = parseFloat(valorNumerico.toFixed(2));
       
       // Criar registro do documento no banco de dados

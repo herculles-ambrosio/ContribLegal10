@@ -147,7 +147,7 @@ export default function PainelContribuinte() {
         };
       case 'nota_venda':
         return {
-          label: 'Nota Fiscal de Venda',
+          label: 'Cupom Fiscal',
           icon: FaReceipt
         };
       case 'imposto':
