@@ -33,9 +33,10 @@ export default function MeusDocumentos() {
   const [isLoading, setIsLoading] = useState(true);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [documentosFiltrados, setDocumentosFiltrados] = useState<Documento[]>([]);
-  const [filtro, setFiltro] = useState<string>('todos');
+  const [filtro, setFiltro] = useState('todos');
+  const [filtroStatus, setFiltroStatus] = useState('todos');
+  const [modoSelecao, setModoSelecao] = useState(false);
   const [documentosSelecionados, setDocumentosSelecionados] = useState<string[]>([]);
-  const [modoSelecao, setModoSelecao] = useState<boolean>(false);
 
   useEffect(() => {
     const verificarAutenticacao = async () => {
@@ -50,11 +51,11 @@ export default function MeusDocumentos() {
     };
     
     verificarAutenticacao();
-  }, [router]);
+  }, []);
   
   useEffect(() => {
     aplicarFiltro();
-  }, [filtro, documentos]);
+  }, [documentos, filtro, filtroStatus]);
 
   const carregarDocumentos = async () => {
     try {
@@ -82,15 +83,35 @@ export default function MeusDocumentos() {
   };
 
   const aplicarFiltro = () => {
-    if (filtro === 'todos') {
-      setDocumentosFiltrados(documentos);
-    } else {
-      setDocumentosFiltrados(documentos.filter(doc => doc.tipo === filtro));
+    let docsFiltrados = documentos;
+    
+    // Aplicar filtro por tipo de documento
+    if (filtro !== 'todos') {
+      if (filtro === 'cupom_fiscal') {
+        // Para cupom fiscal, também mostrar documentos do tipo nota_venda (que são iguais)
+        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === 'cupom_fiscal' || doc.tipo === 'nota_venda');
+      } else if (filtro === 'nota_venda') {
+        // Para nota_venda, também mostrar documentos do tipo cupom_fiscal (que são iguais)
+        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === 'cupom_fiscal' || doc.tipo === 'nota_venda');
+      } else {
+        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === filtro);
+      }
     }
+    
+    // Aplicar filtro por status
+    if (filtroStatus !== 'todos') {
+      docsFiltrados = docsFiltrados.filter(doc => doc.status === filtroStatus);
+    }
+    
+    setDocumentosFiltrados(docsFiltrados);
   };
 
   const handleFiltroChange = (novoFiltro: string) => {
     setFiltro(novoFiltro);
+  };
+  
+  const handleFiltroStatusChange = (novoStatus: string) => {
+    setFiltroStatus(novoStatus);
   };
 
   const getTipoDocumento = (tipo: string) => {
@@ -324,6 +345,11 @@ export default function MeusDocumentos() {
     }
   };
 
+  const limparFiltros = () => {
+    setFiltro('todos');
+    setFiltroStatus('todos');
+  };
+
   return (
     <Layout isAuthenticated>
       <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
@@ -396,7 +422,7 @@ export default function MeusDocumentos() {
             onClick={() => handleFiltroChange('nota_venda')}
             className="text-sm"
           >
-            Notas de Venda
+            Cupons Fiscais
           </Button>
           <Button 
             variant={filtro === 'imposto' ? 'primary' : 'secondary'}
@@ -405,6 +431,50 @@ export default function MeusDocumentos() {
           >
             Comprovantes de Impostos
           </Button>
+        </div>
+      </Card>
+      
+      {/* Filtro de Status */}
+      <Card className="mb-6 bg-white shadow-lg rounded-lg">
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            variant={filtroStatus === 'todos' ? 'primary' : 'secondary'}
+            onClick={() => handleFiltroStatusChange('todos')}
+            className="text-sm"
+          >
+            Todos
+          </Button>
+          <Button 
+            variant={filtroStatus === 'VALIDADO' ? 'primary' : 'secondary'}
+            onClick={() => handleFiltroStatusChange('VALIDADO')}
+            className="text-sm"
+          >
+            Validados
+          </Button>
+          <Button 
+            variant={filtroStatus === 'INVÁLIDO' ? 'primary' : 'secondary'}
+            onClick={() => handleFiltroStatusChange('INVÁLIDO')}
+            className="text-sm"
+          >
+            Inválidos
+          </Button>
+          <Button 
+            variant={filtroStatus === 'AGUARDANDO VALIDAÇÃO' ? 'primary' : 'secondary'}
+            onClick={() => handleFiltroStatusChange('AGUARDANDO VALIDAÇÃO')}
+            className="text-sm"
+          >
+            Aguardando Validação
+          </Button>
+          
+          <div className="ml-auto">
+            <Button 
+              variant="secondary"
+              onClick={limparFiltros}
+              className="text-sm"
+            >
+              Limpar Filtros
+            </Button>
+          </div>
         </div>
       </Card>
       

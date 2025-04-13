@@ -818,7 +818,12 @@ export default function AdminDashboard() {
     
     // Filtro por tipo de documento
     if (filtroTipoDocumento) {
-      filtrados = filtrados.filter(doc => doc.tipo === filtroTipoDocumento);
+      if (filtroTipoDocumento === 'cupom_fiscal') {
+        // Para cupom fiscal, também mostrar documentos do tipo nota_venda (que são iguais)
+        filtrados = filtrados.filter(doc => doc.tipo === 'cupom_fiscal' || doc.tipo === 'nota_venda');
+      } else {
+        filtrados = filtrados.filter(doc => doc.tipo === filtroTipoDocumento);
+      }
     }
     
     // Filtro por CPF/CNPJ
@@ -871,7 +876,7 @@ export default function AdminDashboard() {
         return 'NOTA FISCAL DE SERVIÇO';
       case 'cupom_fiscal':
         return 'CUPOM FISCAL';
-      case 'nota_venda': // Manter compatibilidade com documentos antigos
+      case 'nota_venda':
         return 'CUPOM FISCAL';
       case 'imposto':
         return 'COMPROVANTE DE PAGAMENTO DE IMPOSTO';
@@ -1180,7 +1185,6 @@ export default function AdminDashboard() {
                     <option value="">Todos</option>
                     <option value="nota_servico">Nota Fiscal de Serviço</option>
                     <option value="cupom_fiscal">Cupom Fiscal</option>
-                    <option value="nota_venda">Cupom Fiscal</option>
                     <option value="imposto">Comprovante de Pagamento de Imposto</option>
                   </select>
                 </div>
