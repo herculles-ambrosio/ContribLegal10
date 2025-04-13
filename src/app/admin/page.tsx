@@ -862,9 +862,24 @@ export default function AdminDashboard() {
   
   // Calcular valor total dos documentos filtrados
   const calcularValorTotal = () => {
-    return documentosFiltrados.reduce((sum, doc) => sum + (Number(doc.valor) || 0), 0);
+    return documentosFiltrados.reduce((total, doc) => total + doc.valor, 0);
   };
-  
+
+  const getTipoDocumentoLabel = (tipo: string) => {
+    switch (tipo) {
+      case 'nota_servico':
+        return 'NOTA FISCAL DE SERVIÇO';
+      case 'cupom_fiscal':
+        return 'CUPOM FISCAL';
+      case 'nota_venda': // Manter compatibilidade com documentos antigos
+        return 'CUPOM FISCAL';
+      case 'imposto':
+        return 'COMPROVANTE DE PAGAMENTO DE IMPOSTO';
+      default:
+        return tipo.replace('_', ' ').toUpperCase();
+    }
+  };
+
   // Função para limpar filtros
   const limparFiltros = () => {
     setFiltroContribuinte('');
@@ -1270,7 +1285,7 @@ export default function AdminDashboard() {
                           <div className="text-sm text-gray-500">{usuario?.cpf_cnpj}</div>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="font-medium">{doc.tipo.replace('_', ' ').toUpperCase()}</div>
+                          <div className="font-medium">{getTipoDocumentoLabel(doc.tipo)}</div>
                           <div className="text-sm text-gray-500">#{doc.numero_documento}</div>
                         </td>
                         <td className="py-3 px-4">

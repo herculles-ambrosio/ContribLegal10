@@ -35,7 +35,7 @@ export default function CadastrarDocumento() {
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const { isMobile } = useDeviceDetect();
   const [formData, setFormData] = useState({
-    tipo: 'nota_servico' as TipoDocumento,
+    tipo: 'cupom_fiscal' as TipoDocumento,
     numero_documento: '',
     data_emissao: '',
     valor: '',
@@ -51,6 +51,11 @@ export default function CadastrarDocumento() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    
+    // Log especial para o campo tipo
+    if (name === 'tipo') {
+      console.log('Tipo de documento alterado para:', value);
+    }
     
     // Tratamento especial para o campo valor
     if (name === 'valor') {
@@ -287,25 +292,31 @@ export default function CadastrarDocumento() {
       const numeroSorteio = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       
       console.log('Criando registro do documento...');
+      console.log('Tipo de documento selecionado:', formData.tipo);
       
       // Formatar o valor para garantir 2 casas decimais (convertendo vírgula para ponto)
       const valorTexto = formData.valor.replace(/\./g, '').replace(',', '.');
       const valorNumerico = parseFloat(valorTexto);
       const valorFormatado = parseFloat(valorNumerico.toFixed(2));
       
+      // Preparar os dados a serem inseridos
+      const documentoData = {
+        usuario_id: userId,
+        tipo: formData.tipo, // Garantir que usamos o valor selecionado corretamente
+        numero_documento: formData.numero_documento,
+        data_emissao: formData.data_emissao,
+        valor: valorFormatado,
+        arquivo_url: uploadData.path,
+        numero_sorteio: numeroSorteio,
+        status: 'AGUARDANDO VALIDAÇÃO'
+      };
+      
+      console.log('Dados a serem inseridos:', documentoData);
+      
       // Criar registro do documento no banco de dados
       const { error: insertError } = await supabase
         .from('documentos')
-        .insert({
-          usuario_id: userId,
-          tipo: formData.tipo,
-          numero_documento: formData.numero_documento,
-          data_emissao: formData.data_emissao,
-          valor: valorFormatado,
-          arquivo_url: uploadData.path,
-          numero_sorteio: numeroSorteio,
-          status: 'AGUARDANDO VALIDAÇÃO'
-        });
+        .insert(documentoData);
       
       if (insertError) {
         console.error('Erro ao inserir documento:', insertError);
