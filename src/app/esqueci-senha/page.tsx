@@ -32,7 +32,7 @@ export default function EsqueciSenha() {
     
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/redefinir-senha`,
+        redirectTo: `${window.location.origin}/auth/callback`,
       });
       
       if (error) {
@@ -129,7 +129,7 @@ export default function EsqueciSenha() {
             </form>
           )}
           
-          <div className="mt-8 text-center">
+          <div className="mt-6 text-center">
             <p className="text-blue-100">
               Lembrou sua senha? <Link href="/login" className="text-white font-semibold hover:underline">Voltar para o Login</Link>
             </p>

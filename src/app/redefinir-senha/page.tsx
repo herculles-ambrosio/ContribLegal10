@@ -59,7 +59,7 @@ export default function RedefinirSenha() {
       
       if (error) throw error;
       
-      toast.success('Senha atualizada com sucesso!');
+      toast.success('Senha redefinida com sucesso!');
       router.push('/login');
       
     } catch (error: any) {

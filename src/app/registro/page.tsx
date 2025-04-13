@@ -138,7 +138,8 @@ export default function Registro() {
         options: {
           data: {
             nome_completo: formData.nome_completo,
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/login`,
         }
       });
       
