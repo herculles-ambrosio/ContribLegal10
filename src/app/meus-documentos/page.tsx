@@ -5,7 +5,7 @@ import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaPlus, FaDownload, FaEye, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaPrint, FaCheck, FaFileContract } from 'react-icons/fa';
+import { FaPlus, FaDownload, FaEye, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaPrint, FaCheck, FaFileContract, FaFilter } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -35,6 +35,7 @@ export default function MeusDocumentos() {
   const [documentosFiltrados, setDocumentosFiltrados] = useState<Documento[]>([]);
   const [filtro, setFiltro] = useState('todos');
   const [filtroStatus, setFiltroStatus] = useState('todos');
+  const [filtroNumeroDocumento, setFiltroNumeroDocumento] = useState('');
   const [modoSelecao, setModoSelecao] = useState(false);
   const [documentosSelecionados, setDocumentosSelecionados] = useState<string[]>([]);
 
@@ -55,7 +56,7 @@ export default function MeusDocumentos() {
   
   useEffect(() => {
     aplicarFiltro();
-  }, [documentos, filtro, filtroStatus]);
+  }, [documentos, filtro, filtroStatus, filtroNumeroDocumento]);
 
   const carregarDocumentos = async () => {
     try {
@@ -101,6 +102,13 @@ export default function MeusDocumentos() {
     // Aplicar filtro por status
     if (filtroStatus !== 'todos') {
       docsFiltrados = docsFiltrados.filter(doc => doc.status === filtroStatus);
+    }
+    
+    // Aplicar filtro por número de documento
+    if (filtroNumeroDocumento) {
+      docsFiltrados = docsFiltrados.filter(doc => 
+        doc.numero_documento.toLowerCase().includes(filtroNumeroDocumento.toLowerCase())
+      );
     }
     
     setDocumentosFiltrados(docsFiltrados);
@@ -348,6 +356,7 @@ export default function MeusDocumentos() {
   const limparFiltros = () => {
     setFiltro('todos');
     setFiltroStatus('todos');
+    setFiltroNumeroDocumento('');
   };
 
   return (
@@ -401,82 +410,67 @@ export default function MeusDocumentos() {
       </div>
       
       {/* Filtros */}
-      <Card className="mb-6 bg-white shadow-lg rounded-lg">
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            variant={filtro === 'todos' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroChange('todos')}
-            className="text-sm"
-          >
-            Todos
-          </Button>
-          <Button 
-            variant={filtro === 'nota_servico' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroChange('nota_servico')}
-            className="text-sm"
-          >
-            Notas de Serviço
-          </Button>
-          <Button 
-            variant={filtro === 'nota_venda' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroChange('nota_venda')}
-            className="text-sm"
-          >
-            Cupons Fiscais
-          </Button>
-          <Button 
-            variant={filtro === 'imposto' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroChange('imposto')}
-            className="text-sm"
-          >
-            Comprovantes de Impostos
-          </Button>
-        </div>
-      </Card>
-      
-      {/* Filtro de Status */}
-      <Card className="mb-6 bg-white shadow-lg rounded-lg">
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            variant={filtroStatus === 'todos' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroStatusChange('todos')}
-            className="text-sm"
-          >
-            Todos
-          </Button>
-          <Button 
-            variant={filtroStatus === 'VALIDADO' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroStatusChange('VALIDADO')}
-            className="text-sm"
-          >
-            Validados
-          </Button>
-          <Button 
-            variant={filtroStatus === 'INVÁLIDO' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroStatusChange('INVÁLIDO')}
-            className="text-sm"
-          >
-            Inválidos
-          </Button>
-          <Button 
-            variant={filtroStatus === 'AGUARDANDO VALIDAÇÃO' ? 'primary' : 'secondary'}
-            onClick={() => handleFiltroStatusChange('AGUARDANDO VALIDAÇÃO')}
-            className="text-sm"
-          >
-            Aguardando Validação
-          </Button>
-          
-          <div className="ml-auto">
-            <Button 
-              variant="secondary"
-              onClick={limparFiltros}
-              className="text-sm"
+      <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-medium mb-3 flex items-center">
+          <FaFilter className="mr-2 text-blue-500" />
+          Filtros
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
+              Tipo de Documento
+            </label>
+            <select
+              id="filtroTipoDocumento"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              value={filtro}
+              onChange={(e) => handleFiltroChange(e.target.value)}
             >
-              Limpar Filtros
-            </Button>
+              <option value="todos">Todos</option>
+              <option value="nota_servico">Nota Fiscal de Serviço</option>
+              <option value="nota_venda">Cupom Fiscal</option>
+              <option value="imposto">Comprovante de Pagamento de Imposto</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              id="filtroStatus"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              value={filtroStatus}
+              onChange={(e) => handleFiltroStatusChange(e.target.value)}
+            >
+              <option value="todos">Todos</option>
+              <option value="VALIDADO">Validado</option>
+              <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
+              <option value="INVÁLIDO">Inválido</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filtroNumeroDocumento" className="block text-sm font-medium text-gray-700 mb-1">
+              Número do Documento
+            </label>
+            <input
+              type="text"
+              id="filtroNumeroDocumento"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Buscar por número"
+              value={filtroNumeroDocumento}
+              onChange={(e) => setFiltroNumeroDocumento(e.target.value)}
+            />
           </div>
         </div>
-      </Card>
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={limparFiltros}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Limpar Filtros
+          </button>
+        </div>
+      </div>
       
       {/* Lista de Documentos */}
       {isLoading ? (
