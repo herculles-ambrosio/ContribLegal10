@@ -11,6 +11,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
+import { Database } from '@/types/supabase';
 
 const ESTADOS = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -117,6 +118,50 @@ export default function Registro() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Função para verificar se o email ou CPF/CNPJ já existem
+  const checkExistingUser = async (): Promise<{exists: boolean, errorField?: string, errorMessage?: string}> => {
+    try {
+      // Vamos utilizar uma abordagem mais direta através de uma API personalizada
+      const response = await fetch('/api/auth/check-user-exists', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email.trim().toLowerCase(),
+          cpf_cnpj: formData.cpf_cnpj.replace(/\D/g, '')
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao verificar usuário existente');
+      }
+      
+      if (result.emailExists) {
+        return { 
+          exists: true, 
+          errorField: 'email', 
+          errorMessage: 'Este email já está cadastrado no sistema' 
+        };
+      }
+      
+      if (result.cpfCnpjExists) {
+        return { 
+          exists: true, 
+          errorField: 'cpf_cnpj', 
+          errorMessage: 'Este CPF/CNPJ já está cadastrado no sistema' 
+        };
+      }
+      
+      return { exists: false };
+    } catch (error) {
+      console.error('Erro ao verificar usuário existente:', error);
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -129,6 +174,20 @@ export default function Registro() {
     let authResponse;
     
     try {
+      console.log('Verificando se usuário já existe...');
+      
+      // Verifica se o email ou CPF/CNPJ já existem
+      const existingUserCheck = await checkExistingUser();
+      if (existingUserCheck.exists) {
+        setErrors(prev => ({
+          ...prev,
+          [existingUserCheck.errorField!]: existingUserCheck.errorMessage!
+        }));
+        toast.error(existingUserCheck.errorMessage!);
+        setIsLoading(false);
+        return;
+      }
+      
       console.log('Iniciando registro do usuário...', formData);
       
       // Registrar usuário no Supabase Auth
