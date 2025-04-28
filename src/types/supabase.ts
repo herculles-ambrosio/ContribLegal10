@@ -26,6 +26,23 @@ export type Documento = {
   created_at: string;
 };
 
+export type FaixaNumeroSorte = {
+  id: string;
+  descricao: string;
+  valor_de: number;
+  valor_ate: number;
+  quantidade_numeros: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NumerosSorteDocumento = {
+  id: string;
+  documento_id: string;
+  numero_sorte: string;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -38,6 +55,16 @@ export type Database = {
         Row: Documento;
         Insert: Omit<Documento, 'id' | 'created_at' | 'numero_sorteio'>;
         Update: Partial<Omit<Documento, 'id' | 'created_at' | 'numero_sorteio'>>;
+      };
+      faixas_numero_sorte: {
+        Row: FaixaNumeroSorte;
+        Insert: Omit<FaixaNumeroSorte, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<FaixaNumeroSorte, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      numeros_sorte_documento: {
+        Row: NumerosSorteDocumento;
+        Insert: Omit<NumerosSorteDocumento, 'id' | 'created_at'>;
+        Update: Partial<Omit<NumerosSorteDocumento, 'id' | 'created_at'>>;
       };
     };
   };

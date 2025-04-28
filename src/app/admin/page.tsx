@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Usuario, Documento } from '@/types/supabase';
-import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter, FaDice } from 'react-icons/fa';
 import Layout from '@/components/Layout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
@@ -902,6 +902,26 @@ export default function AdminDashboard() {
       
       console.log(`Atualizando status do documento ${id} para ${status}...`);
       
+      // Obter informações do documento para ter acesso ao valor
+      const { data: documentoData, error: documentoError } = await adminClient
+        .from('documentos')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (documentoError) {
+        console.error('Erro ao obter informações do documento:', documentoError);
+        throw new Error('Não foi possível obter informações do documento');
+      }
+      
+      // Verificar se o documento já está invalidado - não permitir alterações nesse caso
+      if (documentoData.status === 'INVÁLIDO') {
+        console.error('Documento já está invalidado e não pode ser alterado');
+        toast.error('Este documento já foi invalidado e não pode ser alterado.');
+        setOperacaoEmAndamento(false);
+        return;
+      }
+      
       // Tenta atualizar usando método padrão primeiro
       const { error } = await adminClient
         .from('documentos')
@@ -930,6 +950,128 @@ export default function AdminDashboard() {
         }
       } else {
         console.log('Status atualizado com sucesso via método padrão');
+      }
+      
+      // Se o documento foi invalidado, excluir os números da sorte
+      if (status === 'INVÁLIDO') {
+        try {
+          console.log('Documento invalidado, excluindo números da sorte se existirem...');
+          
+          // Excluir números da sorte deste documento
+          const { error: deleteError } = await adminClient
+            .from('numeros_sorte_documento')
+            .delete()
+            .eq('documento_id', id);
+            
+          if (deleteError) {
+            console.error('Erro ao excluir números da sorte:', deleteError);
+            toast.error(`Documento invalidado, mas houve um erro ao excluir números da sorte: ${deleteError.message}`);
+          } else {
+            console.log('Números da sorte excluídos com sucesso (se existiam)');
+          }
+        } catch (error) {
+          const deleteError = error as Error;
+          console.error('Erro ao processar exclusão de números da sorte:', deleteError);
+          // Não impede a invalidação do documento, apenas loga o erro
+          toast.error(`Documento invalidado, mas houve um erro ao excluir números da sorte: ${deleteError.message || 'Erro desconhecido'}`);
+        }
+      }
+      
+      // Se o documento foi validado, gerar os números da sorte de acordo com as faixas
+      if (status === 'VALIDADO') {
+        try {
+          console.log('Documento validado, gerando números da sorte...');
+          
+          // Usar função executarQueryDireta para obter a faixa de acordo com o valor do documento
+          // Escapar o valor para evitar SQL injection
+          const valorDocumento = documentoData.valor.toString().replace(/'/g, "''");
+          const sqlFaixa = `
+            SELECT *
+            FROM faixas_numero_sorte
+            WHERE ${valorDocumento} >= valor_de AND ${valorDocumento} <= valor_ate
+            LIMIT 1
+          `;
+          
+          // Executar consulta direta SQL
+          const faixaResultado = await executarQueryDireta(adminClient, sqlFaixa);
+          let faixa = null;
+          
+          if (faixaResultado && faixaResultado.length > 0) {
+            faixa = faixaResultado[0];
+          } else {
+            // Se não encontrou faixa, usa a de maior valor
+            const sqlMaiorFaixa = `
+              SELECT *
+              FROM faixas_numero_sorte
+              ORDER BY valor_ate DESC
+              LIMIT 1
+            `;
+            
+            const maiorFaixaResultado = await executarQueryDireta(adminClient, sqlMaiorFaixa);
+            
+            if (!maiorFaixaResultado || maiorFaixaResultado.length === 0) {
+              console.error('Erro ao buscar maior faixa de valor');
+              throw new Error('Não foi possível determinar a faixa para o número da sorte');
+            }
+            
+            faixa = maiorFaixaResultado[0];
+            console.log('Valor não se encaixa em nenhuma faixa, usando a maior faixa:', faixa);
+          }
+          
+          // Determinar quantos números da sorte devem ser gerados
+          const quantidadeNumeros = faixa.quantidade_numeros;
+          console.log(`Gerando ${quantidadeNumeros} números da sorte distintos para o documento ${id}`);
+          
+          // Limpar números da sorte antigos deste documento (se houver)
+          await adminClient
+            .from('numeros_sorte_documento')
+            .delete()
+            .eq('documento_id', id);
+            
+          // Conjunto para garantir números únicos
+          const numerosGerados = new Set<string>();
+          const numerosInsert = [];
+          
+          // Continuar gerando até termos a quantidade necessária de números distintos
+          while (numerosGerados.size < quantidadeNumeros) {
+            // Gerar número aleatório para sorteio (entre 000000 e 999999)
+            const numeroSorteio = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+            
+            // Só adicionar se o número ainda não existe no conjunto
+            if (!numerosGerados.has(numeroSorteio)) {
+              numerosGerados.add(numeroSorteio);
+              numerosInsert.push({
+                documento_id: id,
+                numero_sorte: numeroSorteio
+              });
+            }
+          }
+          
+          // Verificar mais uma vez se temos a quantidade correta
+          if (numerosInsert.length !== quantidadeNumeros) {
+            console.error(`Quantidade incorreta de números gerados: ${numerosInsert.length}, esperado: ${quantidadeNumeros}`);
+            throw new Error(`Quantidade incorreta de números gerados: ${numerosInsert.length}, esperado: ${quantidadeNumeros}`);
+          }
+          
+          // Inserir todos os números de sorte gerados (que agora são distintos)
+          if (numerosInsert.length > 0) {
+            const { error: insertError } = await adminClient
+              .from('numeros_sorte_documento')
+              .insert(numerosInsert);
+              
+            if (insertError) {
+              console.error('Erro ao inserir números da sorte:', insertError);
+              throw new Error('Erro ao inserir números da sorte');
+            }
+            
+            console.log(`${numerosInsert.length} números da sorte distintos inseridos com sucesso`);
+          }
+        } catch (numeroSorteError) {
+          console.error('Erro ao processar números da sorte:', numeroSorteError);
+          // Não impede a validação do documento, apenas loga o erro
+          const error = numeroSorteError as Error;
+          toast.error(`Documento validado, mas houve um erro ao gerar números da sorte: ${error.message || 'Erro desconhecido'}`);
+        }
       }
       
       // Atualizar o estado local
@@ -1116,430 +1258,472 @@ export default function AdminDashboard() {
   
   return (
     <Layout isAuthenticated>
-      {operacaoEmAndamento && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-4 rounded-lg shadow-lg flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-            <span>Processando operação...</span>
-          </div>
-        </div>
-      )}
-      
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Painel Administrativo</h1>
-        <p className="text-gray-600">
-          Bem-vindo(a) ao painel administrativo, {nomeUsuarioLogado}
-        </p>
-      </div>
-      
-      <div className="bg-white shadow-md rounded-lg overflow-hidden mb-8">
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('documentos')}
-            className={`flex items-center py-4 px-6 ${activeTab === 'documentos' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
-          >
-            <FaFileAlt className="mr-2" />
-            Documentos
-          </button>
-          <button
-            onClick={() => setActiveTab('usuarios')}
-            className={`flex items-center py-4 px-6 ${activeTab === 'usuarios' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}
-          >
-            <FaUsersCog className="mr-2" />
-            Usuários
-          </button>
-        </div>
-        
-        {activeTab === 'documentos' && (
-          <div className="p-6">
-            {/* Filtros */}
-            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <h3 className="text-lg font-medium mb-3 flex items-center">
-                <FaFilter className="mr-2 text-blue-500" />
-                Filtros
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
-                    Contribuinte
-                  </label>
-                  <input
-                    type="text"
-                    id="filtroContribuinte"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Nome do contribuinte"
-                    value={filtroContribuinte}
-                    onChange={(e) => setFiltroContribuinte(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
-                    Tipo de Documento
-                  </label>
-                  <select
-                    id="filtroTipoDocumento"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    value={filtroTipoDocumento}
-                    onChange={(e) => setFiltroTipoDocumento(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    <option value="nota_servico">Nota Fiscal de Serviço</option>
-                    <option value="cupom_fiscal">Cupom Fiscal</option>
-                    <option value="imposto">Comprovante de Pagamento de Imposto</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="filtroCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
-                    CPF/CNPJ
-                  </label>
-                  <input
-                    type="text"
-                    id="filtroCpfCnpj"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="CPF ou CNPJ"
-                    value={filtroCpfCnpj}
-                    onChange={(e) => setFiltroCpfCnpj(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
-                    Status
-                  </label>
-                  <select
-                    id="filtroStatus"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    value={filtroStatus}
-                    onChange={(e) => setFiltroStatus(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    <option value="VALIDADO">Validado</option>
-                    <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
-                    <option value="INVÁLIDO">Inválido</option>
-                  </select>
-                </div>
-              </div>
-              <div className="mt-4 flex justify-end">
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+              <h1 className="text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
+                Painel Administrativo
+              </h1>
+              <div className="flex space-x-2 items-center">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Administrador: <strong>{nomeUsuarioLogado}</strong>
+                </span>
                 <button
-                  onClick={limparFiltros}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  onClick={() => router.push('/admin/faixas-numero-sorte')}
+                  className="ml-4 inline-flex items-center px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
                 >
-                  Limpar Filtros
+                  <FaEdit className="mr-1" /> Configurar Números da Sorte
                 </button>
               </div>
             </div>
             
-            {/* Totalizadores dos documentos filtrados */}
-            <div className="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
-              <div className="flex flex-wrap justify-between items-center">
-                <div className="text-blue-800">
-                  <span className="font-medium">Documentos filtrados:</span> {documentosFiltrados.length} de {totalDocumentos}
-                </div>
-                <div className="text-blue-800">
-                  <span className="font-medium">Valor total:</span> {new Intl.NumberFormat('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                  }).format(calcularValorTotal())}
-                </div>
-              </div>
-            </div>
-            
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-green-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
-                <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
-              </div>
-              <div className="bg-yellow-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-yellow-800">Aguardando Validação</h3>
-                <p className="text-3xl font-bold text-yellow-600">{totalAguardandoValidacao}</p>
-              </div>
-              <div className="bg-red-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-red-800">Invalidados</h3>
-                <p className="text-3xl font-bold text-red-600">{totalInvalidados}</p>
-              </div>
-              <div className="bg-blue-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-blue-800">Valor Total</h3>
-                <p className="text-3xl font-bold text-blue-600">
-                  {new Intl.NumberFormat('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
-                  }).format(valorTotalDocumentos)}
-                </p>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-700">
-                    <th className="py-3 px-4 text-left">Contribuinte</th>
-                    <th className="py-3 px-4 text-left">Documento</th>
-                    <th className="py-3 px-4 text-left">Data</th>
-                    <th className="py-3 px-4 text-left">Valor</th>
-                    <th className="py-3 px-4 text-left">Nº da Sorte</th>
-                    <th className="py-3 px-4 text-left">Status</th>
-                    <th className="py-3 px-4 text-left">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {documentosFiltrados.map(doc => {
-                    const usuario = doc.usuarios;
-                    return (
-                      <tr key={doc.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <div>{usuario?.nome_completo}</div>
-                          <div className="text-sm text-gray-500">{usuario?.cpf_cnpj}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-medium">{getTipoDocumentoLabel(doc.tipo)}</div>
-                          <div className="text-sm text-gray-500">#{doc.numero_documento}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          {new Date(doc.data_emissao).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="py-3 px-4">
-                          {new Intl.NumberFormat('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL'
-                          }).format(doc.valor)}
-                        </td>
-                        <td className="py-3 px-4">
-                          {doc.numero_sorteio}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span 
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                              ${doc.status === 'VALIDADO' ? 'bg-green-100 text-green-800' : 
-                                doc.status === 'INVÁLIDO' ? 'bg-red-100 text-red-800' : 
-                                'bg-yellow-100 text-yellow-800'}`}
-                          >
-                            {doc.status === 'VALIDADO' && <FaCheck className="mr-1" />}
-                            {doc.status === 'INVÁLIDO' && <FaTimes className="mr-1" />}
-                            {doc.status === 'AGUARDANDO VALIDAÇÃO' && <FaClock className="mr-1" />}
-                            {doc.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex space-x-2">
-                            <button 
-                              onClick={() => atualizarStatusDocumento(doc.id, 'VALIDADO')}
-                              className="bg-green-500 hover:bg-green-600 text-white p-1 rounded"
-                              title="Validar"
-                            >
-                              <FaCheck />
-                            </button>
-                            <button 
-                              onClick={() => atualizarStatusDocumento(doc.id, 'INVÁLIDO')}
-                              className="bg-red-500 hover:bg-red-600 text-white p-1 rounded"
-                              title="Invalidar"
-                            >
-                              <FaTimes />
-                            </button>
-                            <button 
-                              onClick={() => atualizarStatusDocumento(doc.id, 'AGUARDANDO VALIDAÇÃO')}
-                              className="bg-yellow-500 hover:bg-yellow-600 text-white p-1 rounded"
-                              title="Aguardando"
-                            >
-                              <FaClock />
-                            </button>
-                            <button 
-                              onClick={() => visualizarDocumento(doc.id, doc.arquivo_url)}
-                              className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
-                              title="Visualizar arquivo"
-                            >
-                              <FaFileAlt />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="flex space-x-4 border-b border-gray-200 dark:border-gray-700">
+              <button
+                className={`py-2 px-4 focus:outline-none ${
+                  activeTab === 'documentos'
+                    ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
+                }`}
+                onClick={() => setActiveTab('documentos')}
+              >
+                <span className="flex items-center">
+                  <FaFileAlt className="mr-2" /> Documentos
+                </span>
+              </button>
+              <button
+                className={`py-2 px-4 focus:outline-none ${
+                  activeTab === 'usuarios'
+                    ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
+                }`}
+                onClick={() => setActiveTab('usuarios')}
+              >
+                <span className="flex items-center">
+                  <FaUsersCog className="mr-2" /> Usuários
+                </span>
+              </button>
             </div>
           </div>
-        )}
-        
-        {activeTab === 'usuarios' && (
-          <div className="p-6">
-            {/* Filtros */}
-            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <h3 className="text-lg font-medium mb-3 flex items-center">
-                <FaFilter className="mr-2 text-blue-500" />
-                Filtros
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
-                    Usuário
-                  </label>
-                  <input
-                    type="text"
-                    id="filtroUsuarioNome"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Nome do usuário"
-                    value={filtroUsuarioNome}
-                    onChange={(e) => setFiltroUsuarioNome(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="filtroUsuarioCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
-                    CPF/CNPJ
-                  </label>
-                  <input
-                    type="text"
-                    id="filtroUsuarioCpfCnpj"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="CPF ou CNPJ"
-                    value={filtroUsuarioCpfCnpj}
-                    onChange={(e) => setFiltroUsuarioCpfCnpj(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => {
-                    setFiltroUsuarioNome('');
-                    setFiltroUsuarioCpfCnpj('');
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                >
-                  Limpar Filtros
-                </button>
+          
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          ) : null}
+          
+          {operacaoEmAndamento && (
+            <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white p-4 rounded-lg shadow-lg flex items-center space-x-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                <span>Processando operação...</span>
               </div>
             </div>
-            
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-purple-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
-                <p className="text-3xl font-bold text-purple-600">{totalUsuarios}</p>
-              </div>
-              <div className="bg-indigo-50 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-medium text-indigo-800">Administradores</h3>
-                <p className="text-3xl font-bold text-indigo-600">{totalAdmins}</p>
-              </div>
-            </div>
-            
-            {usuariosFiltrados.length === 0 && (
-              <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                <h3 className="text-lg font-medium text-red-800 mb-2">Erro ao carregar usuários</h3>
-                <p className="mb-3">Não foi possível carregar a lista de usuários devido a problemas de configuração ou permissão.</p>
-                
-                <h4 className="font-bold mt-2">Como resolver:</h4>
-                <ol className="list-decimal ml-5 space-y-2 mt-1">
-                  <li>Verifique se a variável <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY</code> está configurada no arquivo <code className="bg-gray-100 px-1 rounded">.env.local</code></li>
-                  <li>Execute o script SQL <code className="bg-gray-100 px-1 rounded">src/db/fix-rls-complete.sql</code> no SQL Editor do Supabase:
-                    <ul className="list-disc ml-5 mt-1">
-                      <li>Acesse o dashboard do Supabase</li>
-                      <li>Vá para SQL Editor</li>
-                      <li>Cole o conteúdo do arquivo</li>
-                      <li>Execute o script</li>
-                    </ul>
-                  </li>
-                  <li>Confirme que as políticas RLS estão configuradas corretamente executando o script de verificação:
-                    <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
-                      node src/scripts/verify-database.js
-                    </pre>
-                  </li>
-                  <li>Reinicie o servidor</li>
-                  <li>Se os problemas persistirem, você pode temporariamente desabilitar o RLS para diagnóstico:
-                    <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
-                      ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
-                      ALTER TABLE documentos DISABLE ROW LEVEL SECURITY;
-                    </pre>
-                  </li>
-                </ol>
-                
-                <h4 className="font-bold mt-3">Exemplo de .env.local:</h4>
-                <pre className="bg-gray-800 text-white p-3 rounded text-sm my-2 overflow-x-auto">
-                  NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co<br />
-                  NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1...<br />
-                  NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1...
-                </pre>
-                
-                <div className="mt-4 flex space-x-4">
-                  <a 
-                    href="https://supabase.com/docs/guides/api/server-side-admin" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
+          )}
+          
+          {activeTab === 'documentos' && (
+            <div className="p-6">
+              {/* Filtros */}
+              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-medium mb-3 flex items-center">
+                  <FaFilter className="mr-2 text-blue-500" />
+                  Filtros
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
+                      Contribuinte
+                    </label>
+                    <input
+                      type="text"
+                      id="filtroContribuinte"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Nome do contribuinte"
+                      value={filtroContribuinte}
+                      onChange={(e) => setFiltroContribuinte(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
+                      Tipo de Documento
+                    </label>
+                    <select
+                      id="filtroTipoDocumento"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      value={filtroTipoDocumento}
+                      onChange={(e) => setFiltroTipoDocumento(e.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      <option value="nota_servico">Nota Fiscal de Serviço</option>
+                      <option value="cupom_fiscal">Cupom Fiscal</option>
+                      <option value="imposto">Comprovante de Pagamento de Imposto</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="filtroCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                      CPF/CNPJ
+                    </label>
+                    <input
+                      type="text"
+                      id="filtroCpfCnpj"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="CPF ou CNPJ"
+                      value={filtroCpfCnpj}
+                      onChange={(e) => setFiltroCpfCnpj(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                      Status
+                    </label>
+                    <select
+                      id="filtroStatus"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      value={filtroStatus}
+                      onChange={(e) => setFiltroStatus(e.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      <option value="VALIDADO">Validado</option>
+                      <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
+                      <option value="INVÁLIDO">Inválido</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={limparFiltros}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
                   >
-                    Documentação do Supabase sobre chaves de serviço
-                  </a>
-                  <button 
-                    onClick={() => window.location.reload()}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    Recarregar página
+                    Limpar Filtros
                   </button>
                 </div>
               </div>
-            )}
-            
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-700">
-                    <th className="py-3 px-4 text-left">Nome</th>
-                    <th className="py-3 px-4 text-left">E-mail</th>
-                    <th className="py-3 px-4 text-left">CPF/CNPJ</th>
-                    <th className="py-3 px-4 text-left">Administrador</th>
-                    <th className="py-3 px-4 text-left">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usuariosFiltrados.map(user => (
-                    <tr key={user.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">{user.nome_completo}</td>
-                      <td className="py-3 px-4">{user.email}</td>
-                      <td className="py-3 px-4">{user.cpf_cnpj}</td>
-                      <td className="py-3 px-4">
-                        {editingUsuarioId === user.id ? (
-                          <select 
-                            className="border rounded p-1"
-                            value={user.master}
-                            onChange={(e) => toggleUsuarioMaster(user.id, e.target.value as 'S' | 'N')}
-                          >
-                            <option value="S">Sim</option>
-                            <option value="N">Não</option>
-                          </select>
-                        ) : (
-                          <span 
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                              ${user.master === 'S' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}
-                          >
-                            {user.master === 'S' ? 'Sim' : 'Não'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex space-x-2">
-                          {editingUsuarioId === user.id ? (
-                            <>
-                              <button 
-                                onClick={() => setEditingUsuarioId(null)}
-                                className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded"
-                                title="Cancelar"
-                              >
-                                <FaUndo />
-                              </button>
-                            </>
-                          ) : (
-                            <button 
-                              onClick={() => setEditingUsuarioId(user.id)}
-                              className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
-                              title="Editar"
-                            >
-                              <FaEdit />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+              
+              {/* Totalizadores dos documentos filtrados */}
+              <div className="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div className="flex flex-wrap justify-between items-center">
+                  <div className="text-blue-800">
+                    <span className="font-medium">Documentos filtrados:</span> {documentosFiltrados.length} de {totalDocumentos}
+                  </div>
+                  <div className="text-blue-800">
+                    <span className="font-medium">Valor total:</span> {new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    }).format(calcularValorTotal())}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-green-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
+                  <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-yellow-800">Aguardando Validação</h3>
+                  <p className="text-3xl font-bold text-yellow-600">{totalAguardandoValidacao}</p>
+                </div>
+                <div className="bg-red-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-red-800">Invalidados</h3>
+                  <p className="text-3xl font-bold text-red-600">{totalInvalidados}</p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-blue-800">Valor Total</h3>
+                  <p className="text-3xl font-bold text-blue-600">
+                    {new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    }).format(valorTotalDocumentos)}
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="py-3 px-4 text-left">Contribuinte</th>
+                      <th className="py-3 px-4 text-left">Documento</th>
+                      <th className="py-3 px-4 text-left">Data</th>
+                      <th className="py-3 px-4 text-left">Valor</th>
+                      <th className="py-3 px-4 text-left">Nº da Sorte</th>
+                      <th className="py-3 px-4 text-left">Status</th>
+                      <th className="py-3 px-4 text-left">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {documentosFiltrados.map(doc => {
+                      const usuario = doc.usuarios;
+                      return (
+                        <tr key={doc.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4">
+                            <div>{usuario?.nome_completo}</div>
+                            <div className="text-sm text-gray-500">{usuario?.cpf_cnpj}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium">{getTipoDocumentoLabel(doc.tipo)}</div>
+                            <div className="text-sm text-gray-500">#{doc.numero_documento}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            {new Date(doc.data_emissao).toLocaleDateString('pt-BR')}
+                          </td>
+                          <td className="py-3 px-4">
+                            {new Intl.NumberFormat('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL'
+                            }).format(doc.valor)}
+                          </td>
+                          <td className="py-3 px-4">
+                            {doc.numero_sorteio}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span 
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                ${doc.status === 'VALIDADO' ? 'bg-green-100 text-green-800' : 
+                                  doc.status === 'INVÁLIDO' ? 'bg-red-100 text-red-800' : 
+                                  'bg-yellow-100 text-yellow-800'}`}
+                            >
+                              {doc.status === 'VALIDADO' && <FaCheck className="mr-1" />}
+                              {doc.status === 'INVÁLIDO' && <FaTimes className="mr-1" />}
+                              {doc.status === 'AGUARDANDO VALIDAÇÃO' && <FaClock className="mr-1" />}
+                              {doc.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex space-x-2">
+                              <button 
+                                onClick={() => atualizarStatusDocumento(doc.id, 'VALIDADO')}
+                                className={`${doc.status === 'INVÁLIDO' ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'} text-white p-1 rounded`}
+                                title="Validar"
+                                disabled={doc.status === 'INVÁLIDO'}
+                              >
+                                <FaCheck />
+                              </button>
+                              <button 
+                                onClick={() => atualizarStatusDocumento(doc.id, 'INVÁLIDO')}
+                                className={`${doc.status === 'INVÁLIDO' ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'} text-white p-1 rounded`}
+                                title="Invalidar"
+                                disabled={doc.status === 'INVÁLIDO'}
+                              >
+                                <FaTimes />
+                              </button>
+                              <button 
+                                onClick={() => atualizarStatusDocumento(doc.id, 'AGUARDANDO VALIDAÇÃO')}
+                                className={`${doc.status === 'INVÁLIDO' ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-600'} text-white p-1 rounded`}
+                                title="Aguardando"
+                                disabled={doc.status === 'INVÁLIDO'}
+                              >
+                                <FaClock />
+                              </button>
+                              <button 
+                                onClick={() => visualizarDocumento(doc.id, doc.arquivo_url)}
+                                className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
+                                title="Visualizar arquivo"
+                              >
+                                <FaFileAlt />
+                              </button>
+                              {doc.status === 'VALIDADO' && (
+                                <button 
+                                  onClick={() => router.push(`/admin/numeros-sorte/${doc.id}`)}
+                                  className="bg-purple-500 hover:bg-purple-600 text-white p-1 rounded"
+                                  title="Gerenciar números da sorte"
+                                >
+                                  <FaDice />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+          
+          {activeTab === 'usuarios' && (
+            <div className="p-6">
+              {/* Filtros */}
+              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-medium mb-3 flex items-center">
+                  <FaFilter className="mr-2 text-blue-500" />
+                  Filtros
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
+                      Usuário
+                    </label>
+                    <input
+                      type="text"
+                      id="filtroUsuarioNome"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Nome do usuário"
+                      value={filtroUsuarioNome}
+                      onChange={(e) => setFiltroUsuarioNome(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="filtroUsuarioCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                      CPF/CNPJ
+                    </label>
+                    <input
+                      type="text"
+                      id="filtroUsuarioCpfCnpj"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="CPF ou CNPJ"
+                      value={filtroUsuarioCpfCnpj}
+                      onChange={(e) => setFiltroUsuarioCpfCnpj(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => {
+                      setFiltroUsuarioNome('');
+                      setFiltroUsuarioCpfCnpj('');
+                    }}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  >
+                    Limpar Filtros
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-purple-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
+                  <p className="text-3xl font-bold text-purple-600">{totalUsuarios}</p>
+                </div>
+                <div className="bg-indigo-50 p-4 rounded-lg shadow">
+                  <h3 className="text-lg font-medium text-indigo-800">Administradores</h3>
+                  <p className="text-3xl font-bold text-indigo-600">{totalAdmins}</p>
+                </div>
+              </div>
+              
+              {usuariosFiltrados.length === 0 && (
+                <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                  <h3 className="text-lg font-medium text-red-800 mb-2">Erro ao carregar usuários</h3>
+                  <p className="mb-3">Não foi possível carregar a lista de usuários devido a problemas de configuração ou permissão.</p>
+                  
+                  <h4 className="font-bold mt-2">Como resolver:</h4>
+                  <ol className="list-decimal ml-5 space-y-2 mt-1">
+                    <li>Verifique se a variável <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY</code> está configurada no arquivo <code className="bg-gray-100 px-1 rounded">.env.local</code></li>
+                    <li>Execute o script SQL <code className="bg-gray-100 px-1 rounded">src/db/fix-rls-complete.sql</code> no SQL Editor do Supabase:
+                      <ul className="list-disc ml-5 mt-1">
+                        <li>Acesse o dashboard do Supabase</li>
+                        <li>Vá para SQL Editor</li>
+                        <li>Cole o conteúdo do arquivo</li>
+                        <li>Execute o script</li>
+                      </ul>
+                    </li>
+                    <li>Confirme que as políticas RLS estão configuradas corretamente executando o script de verificação:
+                      <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
+                        node src/scripts/verify-database.js
+                      </pre>
+                    </li>
+                    <li>Reinicie o servidor</li>
+                    <li>Se os problemas persistirem, você pode temporariamente desabilitar o RLS para diagnóstico:
+                      <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
+                        ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
+                        ALTER TABLE documentos DISABLE ROW LEVEL SECURITY;
+                      </pre>
+                    </li>
+                  </ol>
+                  
+                  <h4 className="font-bold mt-3">Exemplo de .env.local:</h4>
+                  <pre className="bg-gray-800 text-white p-3 rounded text-sm my-2 overflow-x-auto">
+                    NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co<br />
+                    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1...<br />
+                    NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1...
+                  </pre>
+                  
+                  <div className="mt-4 flex space-x-4">
+                    <a 
+                      href="https://supabase.com/docs/guides/api/server-side-admin" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Documentação do Supabase sobre chaves de serviço
+                    </a>
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      Recarregar página
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="py-3 px-4 text-left">Nome</th>
+                      <th className="py-3 px-4 text-left">E-mail</th>
+                      <th className="py-3 px-4 text-left">CPF/CNPJ</th>
+                      <th className="py-3 px-4 text-left">Administrador</th>
+                      <th className="py-3 px-4 text-left">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usuariosFiltrados.map(user => (
+                      <tr key={user.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">{user.nome_completo}</td>
+                        <td className="py-3 px-4">{user.email}</td>
+                        <td className="py-3 px-4">{user.cpf_cnpj}</td>
+                        <td className="py-3 px-4">
+                          {editingUsuarioId === user.id ? (
+                            <select 
+                              className="border rounded p-1"
+                              value={user.master}
+                              onChange={(e) => toggleUsuarioMaster(user.id, e.target.value as 'S' | 'N')}
+                            >
+                              <option value="S">Sim</option>
+                              <option value="N">Não</option>
+                            </select>
+                          ) : (
+                            <span 
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                ${user.master === 'S' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}
+                            >
+                              {user.master === 'S' ? 'Sim' : 'Não'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex space-x-2">
+                            {editingUsuarioId === user.id ? (
+                              <>
+                                <button 
+                                  onClick={() => setEditingUsuarioId(null)}
+                                  className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded"
+                                  title="Cancelar"
+                                >
+                                  <FaUndo />
+                                </button>
+                              </>
+                            ) : (
+                              <button 
+                                onClick={() => setEditingUsuarioId(user.id)}
+                                className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
+                                title="Editar"
+                              >
+                                <FaEdit />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </Layout>
   );

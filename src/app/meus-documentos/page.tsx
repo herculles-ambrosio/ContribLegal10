@@ -11,6 +11,9 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { getUsuarioLogado } from '@/lib/auth';
+import Image from 'next/image';
+import { format } from 'date-fns';
 
 type Documento = {
   id: string;
@@ -21,8 +24,9 @@ type Documento = {
   valor: number;
   arquivo_url: string;
   numero_sorteio: string;
-  status: string;
+  status: 'VALIDADO' | 'INVÁLIDO' | 'AGUARDANDO VALIDAÇÃO';
   created_at: string;
+  numerosSorte?: string[]; // Array de números da sorte associados ao documento
 };
 
 // Logo do Contribuinte Legal em base64 - versão simplificada para o PDF
@@ -32,572 +36,412 @@ export default function MeusDocumentos() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
-  const [documentosFiltrados, setDocumentosFiltrados] = useState<Documento[]>([]);
-  const [filtro, setFiltro] = useState('todos');
-  const [filtroStatus, setFiltroStatus] = useState('todos');
-  const [filtroNumeroDocumento, setFiltroNumeroDocumento] = useState('');
-  const [modoSelecao, setModoSelecao] = useState(false);
-  const [documentosSelecionados, setDocumentosSelecionados] = useState<string[]>([]);
+  const [documentoSelecionado, setDocumentoSelecionado] = useState<Documento | null>(null);
+  const [mostrarModal, setMostrarModal] = useState(false);
+  const [urlArquivo, setUrlArquivo] = useState<string | null>(null);
 
   useEffect(() => {
-    const verificarAutenticacao = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error('Você precisa estar logado para acessar esta página');
-        router.push('/login');
-        return;
+    const carregarDocumentos = async () => {
+      try {
+        const usuario = await getUsuarioLogado();
+        
+        if (!usuario) {
+          router.push('/login');
+          return;
+        }
+        
+        const usuarioId = usuario.id;
+        
+        const { data: documentosData, error } = await supabase
+          .from('documentos')
+          .select('*')
+          .eq('usuario_id', usuarioId)
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('Erro ao carregar documentos:', error);
+          throw error;
+        }
+        
+        const documentosFormatados = documentosData || [];
+        
+        // Para cada documento, buscar os números da sorte associados (se existirem)
+        for (const documento of documentosFormatados) {
+          if (documento.status === 'VALIDADO') {
+            // Buscar números da sorte para este documento
+            const { data: numerosSorteData, error: numerosSorteError } = await supabase
+              .from('numeros_sorte_documento')
+              .select('numero_sorte')
+              .eq('documento_id', documento.id);
+            
+            if (!numerosSorteError && numerosSorteData) {
+              // Adicionar os números da sorte ao documento
+              documento.numerosSorte = numerosSorteData.map(item => item.numero_sorte);
+            }
+          }
+        }
+        
+        setDocumentos(documentosFormatados);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+        setIsLoading(false);
       }
-      
-      await carregarDocumentos();
     };
     
-    verificarAutenticacao();
-  }, []);
+    carregarDocumentos();
+  }, [router]);
   
-  useEffect(() => {
-    aplicarFiltro();
-  }, [documentos, filtro, filtroStatus, filtroNumeroDocumento]);
-
-  const carregarDocumentos = async () => {
-    try {
-      setIsLoading(true);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      
-      const { data, error } = await supabase
-        .from('documentos')
-        .select('*')
-        .eq('usuario_id', session.user.id)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      setDocumentos(data || []);
-      setDocumentosFiltrados(data || []);
-    } catch (error: any) {
-      console.error('Erro ao carregar documentos:', error);
-      toast.error('Erro ao carregar documentos');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const aplicarFiltro = () => {
-    let docsFiltrados = documentos;
-    
-    // Aplicar filtro por tipo de documento
-    if (filtro !== 'todos') {
-      if (filtro === 'cupom_fiscal') {
-        // Para cupom fiscal, também mostrar documentos do tipo nota_venda (que são iguais)
-        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === 'cupom_fiscal' || doc.tipo === 'nota_venda');
-      } else if (filtro === 'nota_venda') {
-        // Para nota_venda, também mostrar documentos do tipo cupom_fiscal (que são iguais)
-        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === 'cupom_fiscal' || doc.tipo === 'nota_venda');
-      } else {
-        docsFiltrados = docsFiltrados.filter(doc => doc.tipo === filtro);
-      }
-    }
-    
-    // Aplicar filtro por status
-    if (filtroStatus !== 'todos') {
-      docsFiltrados = docsFiltrados.filter(doc => doc.status === filtroStatus);
-    }
-    
-    // Aplicar filtro por número de documento
-    if (filtroNumeroDocumento) {
-      docsFiltrados = docsFiltrados.filter(doc => 
-        doc.numero_documento.toLowerCase().includes(filtroNumeroDocumento.toLowerCase())
-      );
-    }
-    
-    setDocumentosFiltrados(docsFiltrados);
-  };
-
-  const handleFiltroChange = (novoFiltro: string) => {
-    setFiltro(novoFiltro);
-  };
-  
-  const handleFiltroStatusChange = (novoStatus: string) => {
-    setFiltroStatus(novoStatus);
-  };
-
-  const getTipoDocumento = (tipo: string) => {
+  const getTipoDocumentoLabel = (tipo: string): string => {
     switch (tipo) {
       case 'nota_servico':
-        return {
-          label: 'Nota Fiscal de Serviço',
-          icon: FaFileContract
-        };
-      case 'cupom_fiscal':
-        return {
-          label: 'Cupom Fiscal',
-          icon: FaReceipt
-        };
+        return 'NOTA FISCAL DE SERVIÇO';
       case 'nota_venda':
-        return {
-          label: 'Cupom Fiscal',
-          icon: FaReceipt
-        };
+        return 'NOTA FISCAL DE VENDA';
+      case 'cupom_fiscal':
+        return 'CUPOM FISCAL';
       case 'imposto':
-        return {
-          label: 'Comprovante de Imposto',
-          icon: FaMoneyBillWave
-        };
+        return 'COMPROVANTE DE PAGAMENTO DE IMPOSTO';
       default:
-        return {
-          label: 'Documento',
-          icon: FaFileAlt
-        };
+        return tipo.replace('_', ' ').toUpperCase();
     }
   };
-
-  const getStatusConfig = (status: string) => {
+  
+  const getStatusClass = (status: string): string => {
     switch (status) {
       case 'VALIDADO':
-        return {
-          color: 'bg-green-100 text-green-800',
-          icon: FaCheckCircle,
-          iconColor: 'text-green-500'
-        };
+        return 'bg-green-100 text-green-800';
       case 'INVÁLIDO':
-        return {
-          color: 'bg-red-100 text-red-800',
-          icon: FaTimesCircle,
-          iconColor: 'text-red-500'
-        };
+        return 'bg-red-100 text-red-800';
       case 'AGUARDANDO VALIDAÇÃO':
+        return 'bg-yellow-100 text-yellow-800';
       default:
-        return {
-          color: 'bg-yellow-100 text-yellow-800',
-          icon: FaHourglassHalf,
-          iconColor: 'text-yellow-500'
-        };
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'VALIDADO':
+        return <FaCheck className="mr-2" />;
+      case 'INVÁLIDO':
+        return <FaTimesCircle className="mr-2" />;
+      case 'AGUARDANDO VALIDAÇÃO':
+        return <FaHourglassHalf className="mr-2" />;
+      default:
+        return null;
     }
   };
 
-  const formatarValor = (valor: number) => {
-    return valor.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    });
-  };
-
-  const formatarData = (dataISO: string) => {
-    const data = new Date(dataISO);
-    return data.toLocaleDateString('pt-BR');
-  };
-
-  const gerarPDF = async (documento: Documento) => {
+  const visualizarDocumento = async (documento: Documento) => {
     try {
-      // Criando um novo documento PDF
+      setDocumentoSelecionado(documento);
+      
+      // Gerar URL assinada para visualização do arquivo
+      const { data, error } = await supabase.storage
+        .from('documentos')
+        .createSignedUrl(documento.arquivo_url, 60); // Validade de 60 segundos
+      
+      if (error) {
+        throw error;
+      }
+      
+      setUrlArquivo(data.signedUrl);
+      setMostrarModal(true);
+    } catch (error) {
+      console.error('Erro ao visualizar documento:', error);
+      toast.error('Não foi possível visualizar o documento');
+    }
+  };
+  
+  const fecharModal = () => {
+    setMostrarModal(false);
+    setUrlArquivo(null);
+    setDocumentoSelecionado(null);
+  };
+  
+  const baixarDocumento = async (documento: Documento) => {
+    try {
+      // Gerar URL assinada para download do arquivo
+      const { data, error } = await supabase.storage
+        .from('documentos')
+        .createSignedUrl(documento.arquivo_url, 60); // Validade de 60 segundos
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Criar link para download
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = `documento_${documento.numero_documento}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Download iniciado!');
+    } catch (error) {
+      console.error('Erro ao baixar documento:', error);
+      toast.error('Não foi possível baixar o documento');
+    }
+  };
+  
+  const imprimirComprovante = (documento: Documento) => {
+    try {
+      // Criar novo documento PDF
       const pdf = new jsPDF();
-      const tipo = getTipoDocumento(documento.tipo);
       
-      // Adicionar logo do Contribuinte Legal
-      try {
-        // Dimensões para o logo
-        const imgWidth = 50;
-        const imgHeight = 30;
-        
-        // Centralizar o logo
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const xPos = (pageWidth - imgWidth) / 2;
-        
-        // Adicionar a imagem ao PDF
-        pdf.addImage(logoBase64, 'JPEG', xPos, 10, imgWidth, imgHeight);
-      } catch (logoError) {
-        console.warn('Erro ao adicionar logo:', logoError);
-        // Fallback para texto
-        pdf.setFontSize(18);
-        pdf.setTextColor(0, 71, 187); // Azul do Contribuinte Legal
-        pdf.text('Contribuinte Legal', 105, 20, { align: 'center' });
-        pdf.setTextColor(0, 0, 0);
-      }
+      // Adicionar título
+      pdf.setFontSize(20);
+      pdf.text('Comprovante de Documento', 20, 20);
       
-      // Título do documento
-      pdf.setFontSize(16);
-      pdf.text('Comprovante de Documento Fiscal', 105, 50, { align: 'center' });
+      // Adicionar logo (se necessário)
+      // pdf.addImage(logoDataUrl, 'PNG', 150, 15, 40, 15);
       
-      pdf.setFontSize(14);
-      pdf.text(`${tipo.label} - #${documento.numero_documento}`, 105, 60, { align: 'center' });
+      // Adicionar linha separadora
+      pdf.setLineWidth(0.5);
+      pdf.line(20, 25, 190, 25);
       
-      // Adicionando marca d'água para documentos não validados
-      if (documento.status === 'AGUARDANDO VALIDAÇÃO' || documento.status === 'INVÁLIDO') {
-        // Cores e configurações para uma marca d'água profissional
-        const textoMarcaDagua = 'DOCUMENTO SEM VALOR PARA SORTEIO';
-        
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        
-        // Altura do retângulo central
-        const rectHeight = 40;
-        const rectY = pageHeight / 2 - rectHeight / 2;
-        
-        // Desenhar faixa com fundo suave
-        pdf.setFillColor(240, 240, 245); // Cor de fundo suave
-        pdf.rect(0, rectY, pageWidth, rectHeight, 'F');
-        
-        // Desenhar bordas da faixa
-        pdf.setDrawColor(48, 63, 159); // Azul mais escuro
-        pdf.setLineWidth(1);
-        pdf.line(0, rectY, pageWidth, rectY);
-        pdf.line(0, rectY + rectHeight, pageWidth, rectY + rectHeight);
-        
-        // Adicionar texto na faixa
-        pdf.setTextColor(220, 53, 69); // Vermelho mais suave
-        pdf.setFontSize(22);
-        pdf.text(textoMarcaDagua, pageWidth / 2, pageHeight / 2 + 8, { align: 'center' });
-        
-        // Restaurar configurações
-        pdf.setTextColor(0, 0, 0);
-        pdf.setDrawColor(0, 0, 0);
-        pdf.setFontSize(12);
-      }
-      
-      // Adicionando informações do documento
+      // Detalhes do documento
       pdf.setFontSize(12);
-      pdf.text(`Tipo de Documento: ${tipo.label}`, 20, 80);
-      pdf.text(`Número do Documento: ${documento.numero_documento}`, 20, 90);
-      pdf.text(`Data de Emissão: ${formatarData(documento.data_emissao)}`, 20, 100);
-      pdf.text(`Valor: ${formatarValor(documento.valor)}`, 20, 110);
-      pdf.text(`Status: ${documento.status}`, 20, 120);
+      pdf.text('Detalhes do Documento', 20, 40);
       
+      pdf.setFontSize(10);
+      pdf.text(`Tipo: ${getTipoDocumentoLabel(documento.tipo)}`, 20, 50);
+      pdf.text(`Número: ${documento.numero_documento}`, 20, 60);
+      pdf.text(`Data de Emissão: ${format(new Date(documento.data_emissao), 'dd/MM/yyyy')}`, 20, 70);
+      pdf.text(`Valor: R$ ${documento.valor.toFixed(2).replace('.', ',')}`, 20, 80);
+      pdf.text(`Status: ${documento.status}`, 20, 90);
+      pdf.text(`Data de Cadastro: ${format(new Date(documento.created_at), 'dd/MM/yyyy HH:mm')}`, 20, 100);
+      
+      // Adicionar informações sobre os números da sorte se o documento estiver validado
       if (documento.status === 'VALIDADO') {
-        pdf.text(`Número da Sorte: ${documento.numero_sorteio}`, 20, 130);
+        // Se temos múltiplos números da sorte
+        if (documento.numerosSorte && documento.numerosSorte.length > 0) {
+          pdf.text(`Números da Sorte:`, 20, 120);
+          documento.numerosSorte.forEach((numero, index) => {
+            pdf.text(`${index + 1}. ${numero}`, 30, 130 + (index * 10));
+          });
+        } else {
+          // Retrocompatibilidade com o campo antigo
+          pdf.text(`Número da Sorte: ${documento.numero_sorteio}`, 20, 130);
+        }
+      } else {
+        pdf.text('Este documento ainda não possui números da sorte atribuídos.', 20, 130);
+        pdf.text('Após a validação, serão gerados números da sorte conforme o valor do documento.', 20, 140);
       }
-      
-      // Adicionar informações de verificação
-      pdf.setFontSize(11);
-      const linhaVerificacao = "Para verificar a autenticidade deste documento, acesse o portal Contribuinte Legal.";
-      pdf.text(linhaVerificacao, 105, 260, { align: 'center' });
       
       // Rodapé
-      pdf.setFontSize(10);
-      pdf.text('Este documento é parte do programa Contribuinte Legal', 105, 280, { align: 'center' });
-      pdf.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 285, { align: 'center' });
+      pdf.setFontSize(8);
+      pdf.text('Este documento é apenas um comprovante e não substitui o documento fiscal original.', 20, 250);
+      pdf.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm:ss')}`, 20, 255);
       
-      // Salvar o PDF
+      // Salvar ou abrir o PDF
       pdf.save(`comprovante_${documento.numero_documento}.pdf`);
       
-      toast.success('PDF gerado com sucesso!');
-    } catch (error: any) {
-      console.error('Erro ao gerar PDF:', error);
-      toast.error('Erro ao gerar o PDF');
+      toast.success('Comprovante gerado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao gerar comprovante:', error);
+      toast.error('Não foi possível gerar o comprovante');
     }
   };
-
-  const baixarDocumento = async (arquivo_url: string) => {
-    try {
-      const { data, error } = await supabase.storage.from('documentos').download(arquivo_url);
-      
-      if (error) throw error;
-      
-      // Criar URL para download
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = arquivo_url.split('/').pop() || 'documento';
-      document.body.appendChild(a);
-      a.click();
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error: any) {
-      console.error('Erro ao baixar documento:', error);
-      toast.error('Erro ao baixar documento');
-    }
-  };
-
-  const gerarPDFMultiplos = async () => {
-    try {
-      if (documentosSelecionados.length === 0) {
-        toast.error('Selecione pelo menos um documento para imprimir');
-        return;
-      }
-
-      // Gerar PDF para cada documento selecionado
-      const docsParaImprimir = documentosFiltrados.filter(doc => 
-        documentosSelecionados.includes(doc.id)
-      );
-
-      for (const doc of docsParaImprimir) {
-        await gerarPDF(doc);
-      }
-
-      // Após imprimir, sair do modo seleção
-      setModoSelecao(false);
-      setDocumentosSelecionados([]);
-      
-      toast.success(`${docsParaImprimir.length} documentos impressos com sucesso!`);
-    } catch (error: any) {
-      console.error('Erro ao gerar PDFs em lote:', error);
-      toast.error('Erro ao gerar PDFs');
-    }
-  };
-
-  const toggleSelecaoDocumento = (id: string) => {
-    setDocumentosSelecionados(prevSelecionados => {
-      if (prevSelecionados.includes(id)) {
-        return prevSelecionados.filter(docId => docId !== id);
-      } else {
-        return [...prevSelecionados, id];
-      }
-    });
-  };
-
-  const toggleModoSelecao = () => {
-    setModoSelecao(!modoSelecao);
-    if (modoSelecao) {
-      // Saindo do modo seleção, limpar seleções
-      setDocumentosSelecionados([]);
-    }
-  };
-
-  const limparFiltros = () => {
-    setFiltro('todos');
-    setFiltroStatus('todos');
-    setFiltroNumeroDocumento('');
+  
+  const abrirCadastro = () => {
+    router.push('/meus-documentos/cadastrar');
   };
 
   return (
     <Layout isAuthenticated>
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
-        <div>
-          <h1 className="text-2xl font-bold mb-2">Meus Documentos</h1>
-          <p className="text-gray-600">
-            Gerencie todos os seus documentos fiscais cadastrados
-          </p>
-        </div>
-        
-        <div className="mt-4 sm:mt-0 flex space-x-2">
-          {modoSelecao ? (
-            <>
-              <Button 
-                variant="success" 
-                icon={FaPrint}
-                onClick={gerarPDFMultiplos}
-                className="text-sm"
-                disabled={documentosSelecionados.length === 0}
-              >
-                Imprimir Selecionados ({documentosSelecionados.length})
-              </Button>
-              <Button 
-                variant="secondary"
-                onClick={toggleModoSelecao}
-                className="text-sm"
-              >
-                Cancelar
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button 
-                variant="secondary" 
-                icon={FaPrint}
-                onClick={toggleModoSelecao}
-                className="text-sm mr-2"
-              >
-                Modo Seleção
-              </Button>
-              <Link href="/meus-documentos/cadastrar">
-                <Button variant="primary" icon={FaPlus}>
-                  Novo Documento
-                </Button>
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
-      
-      {/* Filtros */}
-      <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-        <h3 className="text-lg font-medium mb-3 flex items-center">
-          <FaFilter className="mr-2 text-blue-500" />
-          Filtros
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de Documento
-            </label>
-            <select
-              id="filtroTipoDocumento"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              value={filtro}
-              onChange={(e) => handleFiltroChange(e.target.value)}
-            >
-              <option value="todos">Todos</option>
-              <option value="nota_servico">Nota Fiscal de Serviço</option>
-              <option value="nota_venda">Cupom Fiscal</option>
-              <option value="imposto">Comprovante de Pagamento de Imposto</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
-              Status
-            </label>
-            <select
-              id="filtroStatus"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              value={filtroStatus}
-              onChange={(e) => handleFiltroStatusChange(e.target.value)}
-            >
-              <option value="todos">Todos</option>
-              <option value="VALIDADO">Validado</option>
-              <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
-              <option value="INVÁLIDO">Inválido</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filtroNumeroDocumento" className="block text-sm font-medium text-gray-700 mb-1">
-              Número do Documento
-            </label>
-            <input
-              type="text"
-              id="filtroNumeroDocumento"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Buscar por número"
-              value={filtroNumeroDocumento}
-              onChange={(e) => setFiltroNumeroDocumento(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="mt-4 flex justify-end">
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-blue-700">Meus Documentos</h1>
           <button
-            onClick={limparFiltros}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+            onClick={abrirCadastro}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
           >
-            Limpar Filtros
+            Cadastrar Novo Documento
           </button>
         </div>
-      </div>
-      
-      {/* Lista de Documentos */}
-      {isLoading ? (
-        <div className="flex justify-center my-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
-      ) : documentosFiltrados.length === 0 ? (
-        <Card className="bg-white shadow-lg rounded-lg">
-          <div className="text-center py-8">
-            <FaFileAlt className="mx-auto text-4xl text-gray-400 mb-4" />
-            <h3 className="text-xl font-medium text-gray-700 mb-2">Nenhum documento encontrado</h3>
-            <p className="text-gray-500 mb-6">
-              {filtro === 'todos' 
-                ? 'Você ainda não cadastrou nenhum documento.' 
-                : 'Nenhum documento encontrado com o filtro selecionado.'}
-            </p>
-            <Link href="/meus-documentos/cadastrar">
-              <Button variant="primary" icon={FaPlus}>
-                Cadastrar Documento
-              </Button>
-            </Link>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
           </div>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {documentosFiltrados.map((documento) => {
-            const tipo = getTipoDocumento(documento.tipo);
-            const statusConfig = getStatusConfig(documento.status);
-            const StatusIcon = statusConfig.icon;
-            
-            return (
-              <Card key={documento.id} className="bg-white shadow-md hover:shadow-lg transition-shadow rounded-lg overflow-hidden relative">
-                <div className="flex flex-col sm:flex-row justify-between items-start">
-                  {modoSelecao && (
-                    <div 
-                      className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer border ${
-                        documentosSelecionados.includes(documento.id) 
-                          ? 'bg-blue-500 border-blue-500 text-white' 
-                          : 'bg-white border-gray-300'
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelecaoDocumento(documento.id);
-                      }}
-                    >
-                      {documentosSelecionados.includes(documento.id) && (
-                        <FaCheck className="text-xs" />
-                      )}
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <div className="flex items-center mb-3">
-                      <div className="p-2 rounded-full bg-blue-100 mr-3">
-                        <tipo.icon className="text-blue-600 text-lg" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-800">{tipo.label}</h3>
-                        <p className="text-sm text-gray-500">#{documento.numero_documento}</p>
-                      </div>
-                      <div className="ml-auto sm:hidden">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.color}`}>
-                          <StatusIcon className={`mr-1 ${statusConfig.iconColor}`} />
+        ) : documentos.length === 0 ? (
+          <div className="bg-white shadow-md rounded-lg p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <Image 
+                src="/empty-folder.svg" 
+                alt="Nenhum documento" 
+                width={150} 
+                height={150} 
+              />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">Você ainda não possui documentos cadastrados</h2>
+            <p className="text-gray-600 mb-4">
+              Cadastre seus documentos fiscais para participar dos sorteios
+            </p>
+            <button
+              onClick={abrirCadastro}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+            >
+              Cadastrar Meu Primeiro Documento
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white shadow-md rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Documento
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Valor
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Número(s) da Sorte
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ações
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {documentos.map((documento) => (
+                    <tr key={documento.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-blue-100 rounded-full">
+                            <FaFileAlt className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{getTipoDocumentoLabel(documento.tipo)}</div>
+                            <div className="text-sm text-gray-500">#{documento.numero_documento}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{format(new Date(documento.data_emissao), 'dd/MM/yyyy')}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(documento.valor)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {documento.status === 'VALIDADO' ? (
+                          <div>
+                            {documento.numerosSorte && documento.numerosSorte.length > 0 ? (
+                              <div className="text-sm font-medium text-gray-900">
+                                <p className="font-bold text-green-600">{documento.numerosSorte.length} números:</p>
+                                <div className="max-h-20 overflow-y-auto">
+                                  {documento.numerosSorte.map((numero, index) => (
+                                    <p key={index} className="font-medium">{numero}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="font-medium">{documento.numero_sorteio}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">-</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(documento.status)}`}>
+                          {getStatusIcon(documento.status)}
                           {documento.status}
                         </span>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Data de Emissão</p>
-                        <p className="font-medium">{formatarData(documento.data_emissao)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Valor</p>
-                        <p className="font-medium">{formatarValor(documento.valor)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Número da Sorte</p>
-                        <p className="font-medium">{documento.status === 'VALIDADO' ? documento.numero_sorteio : '-'}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="hidden sm:block">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.color}`}>
-                        <StatusIcon className={`mr-1 ${statusConfig.iconColor}`} />
-                        {documento.status}
-                      </span>
-                    </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => visualizarDocumento(documento)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Visualizar"
+                          >
+                            <FaEye />
+                          </button>
+                          <button
+                            onClick={() => baixarDocumento(documento)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Baixar"
+                          >
+                            <FaDownload />
+                          </button>
+                          <button
+                            onClick={() => imprimirComprovante(documento)}
+                            className="text-gray-600 hover:text-gray-900"
+                            title="Imprimir comprovante"
+                          >
+                            <FaPrint />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        
+        {mostrarModal && documentoSelecionado && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-screen flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 className="text-xl font-semibold">
+                  {getTipoDocumentoLabel(documentoSelecionado.tipo)} - {documentoSelecionado.numero_documento}
+                </h2>
+                <button
+                  onClick={fecharModal}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  &times;
+                </button>
+              </div>
+              <div className="p-4 flex-1 overflow-auto">
+                {urlArquivo ? (
+                  <iframe
+                    src={urlArquivo}
+                    className="w-full h-[70vh]"
+                    title="Visualização do documento"
+                  />
+                ) : (
+                  <div className="flex justify-center items-center h-64">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                   </div>
-                  
-                  <div className="flex flex-row sm:flex-col justify-end space-y-0 space-x-2 sm:space-y-2 sm:space-x-0 mt-4 sm:mt-0">
-                    <Button 
-                      variant="info" 
-                      icon={FaEye}
-                      onClick={() => window.open(
-                        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/documentos/${documento.arquivo_url}`, 
-                        '_blank'
-                      )}
-                      className="text-sm"
-                    >
-                      Visualizar
-                    </Button>
-                    
-                    <Button 
-                      variant="secondary" 
-                      icon={FaDownload}
-                      onClick={() => baixarDocumento(documento.arquivo_url)}
-                      className="text-sm"
-                    >
-                      Baixar
-                    </Button>
-
-                    <Button 
-                      variant="success" 
-                      icon={FaPrint}
-                      onClick={() => gerarPDF(documento)}
-                      className="text-sm"
-                    >
-                      Imprimir
-                    </Button>
-                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-gray-200 flex justify-between">
+                <div className="flex items-center">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusClass(documentoSelecionado.status)}`}>
+                    {getStatusIcon(documentoSelecionado.status)}
+                    {documentoSelecionado.status}
+                  </span>
                 </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => baixarDocumento(documentoSelecionado)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
+                  >
+                    <FaDownload className="mr-2" /> Baixar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </Layout>
   );
 } 
