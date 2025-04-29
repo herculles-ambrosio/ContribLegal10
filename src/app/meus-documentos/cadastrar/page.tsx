@@ -13,13 +13,6 @@ import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import useDeviceDetect from '@/hooks/useDeviceDetect';
 
-// Extender a interface Window para incluir nossa propriedade
-declare global {
-  interface Window {
-    qrErrorShown?: boolean;
-  }
-}
-
 // Importar o scanner de QR code dinamicamente (apenas no cliente)
 const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
   ssr: false, // Não renderizar no servidor
@@ -186,7 +179,7 @@ export default function CadastrarDocumento() {
   };
 
   const handleQrCodeResult = (result: string) => {
-    // Substituir o valor do campo de número de documento com o resultado do QR code
+    // Extrair apenas o link do QR code e armazenar no campo de número do documento
     setFormData(prev => ({ ...prev, numero_documento: result }));
     
     // Fechar o scanner automaticamente
@@ -202,25 +195,14 @@ export default function CadastrarDocumento() {
     let errorMessage = 'Erro ao ler o QR code. Tente novamente.';
     
     if (typeof error === 'string') {
-      if (error.includes('Camera access denied')) {
+      if (error.includes('denied') || error === 'Camera access denied') {
         errorMessage = 'Acesso à câmera negado. Verifique as permissões.';
-      } else if (error.includes('No cameras detected')) {
+      } else if (error.includes('No cameras') || error === 'No cameras detected') {
         errorMessage = 'Nenhuma câmera detectada no dispositivo.';
-      } else if (error.includes('Falha ao acessar as câmeras')) {
-        errorMessage = 'Falha ao acessar as câmeras. Verifique as permissões.';
       }
     }
     
-    // Evitar mostrar o mesmo erro repetidamente em um curto período
-    if (!window.qrErrorShown) {
-      window.qrErrorShown = true;
-      toast.error(errorMessage);
-      
-      // Limpar a flag após um tempo
-      setTimeout(() => {
-        window.qrErrorShown = false;
-      }, 5000);
-    }
+    toast.error(errorMessage);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -292,7 +274,6 @@ export default function CadastrarDocumento() {
       const numeroSorteio = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
       
       console.log('Criando registro do documento...');
-      console.log('Tipo de documento selecionado:', formData.tipo);
       
       // Formatar o valor para garantir 2 casas decimais (convertendo vírgula para ponto)
       const valorTexto = formData.valor.replace(/\./g, '').replace(',', '.');
@@ -302,7 +283,7 @@ export default function CadastrarDocumento() {
       // Preparar os dados a serem inseridos
       const documentoData = {
         usuario_id: userId,
-        tipo: formData.tipo, // Garantir que usamos o valor selecionado corretamente
+        tipo: formData.tipo,
         numero_documento: formData.numero_documento,
         data_emissao: formData.data_emissao,
         valor: valorFormatado,
@@ -398,6 +379,21 @@ export default function CadastrarDocumento() {
                   required
                   variant="dark"
                 />
+                
+                {formData.tipo === 'cupom_fiscal' && (
+                  <div className="absolute right-2 top-9">
+                    <Button
+                      type="button"
+                      variant="info"
+                      onClick={handleScanQR}
+                      disabled={showScanner}
+                      className="w-8 h-8 min-w-[2rem] flex items-center justify-center rounded-full"
+                      aria-label="Ler QR Code"
+                    >
+                      <FaQrcode size={16} />
+                    </Button>
+                  </div>
+                )}
               </div>
               
               <Input
@@ -476,38 +472,25 @@ export default function CadastrarDocumento() {
               </div>
             </div>
             
-            <div className="flex items-center gap-4 mt-8 flex-nowrap w-full">
-              <Button
-                type="button"
-                variant="info"
-                onClick={handleScanQR}
-                disabled={showScanner}
-                className="w-10 h-10 min-w-[2.5rem] flex items-center justify-center rounded-full flex-shrink-0"
-                aria-label="Escanear código QR"
-                style={{ marginRight: '0.5rem' }}
+            <div className="flex gap-4 mt-8 justify-end">
+              <Button 
+                type="button" 
+                variant="secondary"
+                onClick={() => router.push('/meus-documentos')}
+                className="text-xs md:text-base"
               >
-                <FaQrcode size={18} />
+                Cancelar
               </Button>
-              <div className="flex gap-2 md:gap-4 justify-end ml-auto">
-                <Button 
-                  type="button" 
-                  variant="secondary"
-                  onClick={() => router.push('/meus-documentos')}
-                  className="text-xs md:text-base"
-                >
-                  Cancelar
-                </Button>
-                
-                <Button 
-                  type="submit" 
-                  variant="primary" 
-                  isLoading={isLoading}
-                  className="py-3 text-xs md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
-                  animated
-                >
-                  Cadastrar
-                </Button>
-              </div>
+              
+              <Button 
+                type="submit" 
+                variant="primary" 
+                isLoading={isLoading}
+                className="py-3 text-xs md:text-base font-medium shadow-lg hover:shadow-blue-500/50 transition-all duration-300"
+                animated
+              >
+                Cadastrar
+              </Button>
             </div>
           </form>
           
@@ -515,7 +498,7 @@ export default function CadastrarDocumento() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
               <div className="bg-white p-4 rounded-lg shadow-lg max-w-md w-full">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Escanear QR Code</h3>
+                  <h3 className="text-lg font-semibold">Ler QR Code do Cupom Fiscal</h3>
                   <Button
                     type="button"
                     variant="secondary"
@@ -526,8 +509,8 @@ export default function CadastrarDocumento() {
                     ✕
                   </Button>
                 </div>
-                <p className="text-sm text-gray-500 mb-4">
-                  Posicione o código QR no centro da câmera para escaneá-lo automaticamente.
+                <p className="text-sm text-gray-600 mb-4">
+                  Posicione o QR Code do cupom fiscal no centro da câmera para leitura automática.
                 </p>
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeResult}

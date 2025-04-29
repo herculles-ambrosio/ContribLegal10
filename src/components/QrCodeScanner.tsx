@@ -1,23 +1,22 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import Button from '@/components/ui/Button';
-import { FaSync, FaCamera } from 'react-icons/fa';
+import { FaSync } from 'react-icons/fa';
 
 interface QrCodeScannerProps {
   onScanSuccess: (result: string) => void;
   onScanError?: (error: any) => void;
-  onClose?: () => void;
 }
 
-export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: QrCodeScannerProps) {
+export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScannerProps) {
   const [cameras, setCameras] = useState<{id: string, label: string}[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const [message, setMessage] = useState<string>('Iniciando câmera...');
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannerContainerRef = useRef<HTMLDivElement>(null);
+  const scannerContainerId = "qr-reader";
 
   // Inicializar o scanner e obter lista de câmeras
   useEffect(() => {
@@ -26,7 +25,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
     const initScanner = async () => {
       try {
         // Criar uma instância do scanner
-        const html5QrCode = new Html5Qrcode("qr-reader");
+        const html5QrCode = new Html5Qrcode(scannerContainerId);
         scannerRef.current = html5QrCode;
 
         // Buscar câmeras disponíveis
@@ -34,7 +33,8 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           const devices = await Html5Qrcode.getCameras();
           if (devices && devices.length > 0) {
             setCameras(devices);
-            // Selecionar a câmera traseira por padrão (geralmente a última)
+            
+            // Priorizar câmera traseira para melhor escaneamento
             const rearCamera = devices.find(camera => 
               camera.label.toLowerCase().includes('back') || 
               camera.label.toLowerCase().includes('traseira') ||
@@ -45,40 +45,43 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
             const cameraId = rearCamera ? rearCamera.id : devices[0].id;
             setCurrentCamera(cameraId);
             
-            // Iniciar o escaneamento com esta câmera
+            // Iniciar o escaneamento
             startScanner(cameraId);
           } else {
-            setMessage('Nenhuma câmera encontrada.');
+            setMessage('Nenhuma câmera encontrada no dispositivo.');
+            if (onScanError) onScanError('No cameras detected');
           }
         } catch (error) {
           console.error('Erro ao obter câmeras:', error);
-          setMessage('Falha ao acessar as câmeras. Verifique as permissões.');
-          if (onScanError) onScanError('Falha ao acessar as câmeras');
+          setMessage('Falha ao acessar as câmeras. Verifique as permissões do navegador.');
+          if (onScanError) onScanError('Camera access denied');
         }
       } catch (error) {
         console.error('Erro ao inicializar scanner:', error);
-        setMessage('Falha ao inicializar o scanner de QR code.');
-        if (onScanError) onScanError('Falha ao inicializar scanner');
+        setMessage('Falha ao inicializar o scanner de QR Code.');
+        if (onScanError) onScanError(error);
       }
     };
 
     initScanner();
 
-    // Limpar recursos ao desmontar
+    // Limpar recursos ao desmontar o componente
     return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop()
-          .catch(error => console.error('Erro ao parar scanner:', error));
+      if (scannerRef.current) {
+        if (scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING) {
+          scannerRef.current.stop()
+            .catch(error => console.error('Erro ao parar scanner:', error));
+        }
       }
     };
   }, [onScanError]);
 
-  // Alternar entre câmeras
+  // Alternar entre câmeras disponíveis
   const switchCamera = async () => {
     if (!cameras || cameras.length <= 1) return;
     
     // Parar o scanner atual
-    if (scannerRef.current && scannerRef.current.isScanning) {
+    if (scannerRef.current && scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING) {
       await scannerRef.current.stop();
     }
 
@@ -109,23 +112,25 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           scannerRef.current.stop()
             .then(() => {
               setIsScanning(false);
-              // Chamar o callback de sucesso imediatamente
+              // Chamar o callback de sucesso com o link do QR code
               onScanSuccess(decodedText);
             })
             .catch(error => console.error('Erro ao parar scanner após sucesso:', error));
         } else {
-          // Se por algum motivo o scanner não estiver disponível, ainda assim chamar o callback
+          // Chamar o callback mesmo se o scanner não estiver disponível
           onScanSuccess(decodedText);
         }
       };
 
+      // Configuração otimizada para QR codes da SEFAZ MG
       const config = {
-        fps: 10,
+        fps: 30, // Maior taxa de quadros para detecção mais rápida
         qrbox: {
-          width: 250,
-          height: 250,
+          width: 280,
+          height: 280,
         },
-        aspectRatio: 1.0
+        aspectRatio: 1.0,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
       };
 
       await scannerRef.current.start(
@@ -134,7 +139,6 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
         qrCodeSuccessCallback,
         (errorMessage) => {
           // Ignorar mensagens de erro comuns durante o escaneamento 
-          // que não necessitam ser reportadas ao usuário
           if (
             typeof errorMessage === 'string' && (
               errorMessage.includes('No QR code found') ||
@@ -148,7 +152,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
         }
       );
       
-      setMessage('Aponte a câmera para o QR code...');
+      setMessage('Aponte a câmera para o QR Code do cupom fiscal...');
     } catch (error) {
       console.error('Erro ao iniciar scanner:', error);
       setMessage('Falha ao iniciar a câmera. Tente novamente.');
@@ -160,9 +164,8 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
   return (
     <div className="qr-scanner-wrapper">
       <div 
-        id="qr-reader" 
-        ref={scannerContainerRef} 
-        className="w-full h-64 overflow-hidden bg-gray-100 rounded-lg relative"
+        id={scannerContainerId} 
+        className="w-full h-[300px] overflow-hidden bg-gray-100 rounded-lg relative"
       ></div>
       
       <div className="text-center mt-2 mb-2">
@@ -176,10 +179,10 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           <Button 
             type="button"
             variant="info"
-            icon={FaSync}
             onClick={switchCamera}
-            className="text-sm md:text-base flex items-center"
+            className="text-sm flex items-center gap-2"
           >
+            <FaSync size={14} />
             Alternar câmera
           </Button>
         </div>
@@ -190,30 +193,26 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onClose }: Q
           width: 100%;
         }
 
-        :global(#qr-reader) {
+        :global(#${scannerContainerId}) {
           width: 100% !important;
           border: none !important;
           border-radius: 0.5rem !important;
           overflow: hidden !important;
         }
 
-        :global(#qr-reader video) {
+        :global(#${scannerContainerId} video) {
           width: 100% !important;
           height: auto !important;
           object-fit: cover !important;
           border-radius: 0.375rem !important;
         }
 
-        :global(#qr-reader__scan_region) {
+        :global(#${scannerContainerId}__scan_region) {
           background: rgba(0, 0, 0, 0.1) !important;
           overflow: hidden !important;
         }
 
-        :global(#qr-reader__scan_region img) {
-          display: none !important;
-        }
-
-        :global(#qr-reader__dashboard) {
+        :global(#${scannerContainerId}__dashboard) {
           display: none !important;
         }
       `}</style>
