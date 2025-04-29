@@ -124,13 +124,21 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
 
       // Configuração otimizada para QR codes da SEFAZ MG
       const config = {
-        fps: 30, // Maior taxa de quadros para detecção mais rápida
-        qrbox: {
-          width: 280,
-          height: 280,
+        fps: 60, // Aumentado para 60fps para detecção mais rápida
+        qrbox: { 
+          width: 350, // Área de escaneamento maior
+          height: 350
         },
         aspectRatio: 1.0,
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+        disableFlip: false, // Permitir leitura em qualquer orientação
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true // Usar API nativa se disponível
+        },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        // Acelerar a detecção
+        showTorchButtonIfSupported: true,
+        rememberLastUsedCamera: true,
+        defaultZoomValueIfSupported: 2.0 // Zoom para melhor visibilidade do QR
       };
 
       await scannerRef.current.start(
@@ -165,7 +173,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
     <div className="qr-scanner-wrapper">
       <div 
         id={scannerContainerId} 
-        className="w-full h-[300px] overflow-hidden bg-gray-100 rounded-lg relative"
+        className="w-full h-[400px] overflow-hidden bg-gray-100 rounded-lg relative"
       ></div>
       
       <div className="text-center mt-2 mb-2">
@@ -202,7 +210,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
 
         :global(#${scannerContainerId} video) {
           width: 100% !important;
-          height: auto !important;
+          height: 100% !important;
           object-fit: cover !important;
           border-radius: 0.375rem !important;
         }
@@ -210,10 +218,20 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
         :global(#${scannerContainerId}__scan_region) {
           background: rgba(0, 0, 0, 0.1) !important;
           overflow: hidden !important;
+          width: 100% !important;
+          height: 100% !important;
         }
 
         :global(#${scannerContainerId}__dashboard) {
           display: none !important;
+        }
+        
+        /* Aumentar o tamanho do quadro de escaneamento */
+        :global(#${scannerContainerId}__scan_region_highlight) {
+          width: 90% !important;
+          height: 90% !important;
+          border: 4px solid #60a5fa !important;
+          border-radius: 8px !important;
         }
       `}</style>
     </div>

@@ -179,13 +179,31 @@ export default function CadastrarDocumento() {
   };
 
   const handleQrCodeResult = (result: string) => {
-    // Extrair apenas o link do QR code e armazenar no campo de número do documento
-    setFormData(prev => ({ ...prev, numero_documento: result }));
+    console.log('QR Code detectado:', result);
     
-    // Fechar o scanner automaticamente
-    setShowScanner(false);
-    
-    toast.success('QR Code lido com sucesso!');
+    // Extrair o link do QR code e armazenar no campo de número do documento
+    try {
+      // Verifica se é um link da SEFAZ MG válido
+      if (result.includes('fazenda.mg.gov.br') || result.includes('sefaz.mg.gov.br') || 
+          result.includes('portalsped') || result.includes('nfce')) {
+        
+        // Armazena o link completo
+        setFormData(prev => ({ ...prev, numero_documento: result }));
+        
+        // Fechar o scanner automaticamente
+        setShowScanner(false);
+        
+        toast.success('QR Code lido com sucesso!');
+      } else {
+        console.warn('QR Code não parece ser de um cupom fiscal da SEFAZ MG:', result);
+        toast.error('O QR Code não parece ser de um cupom fiscal válido da SEFAZ MG. Tente novamente ou insira manualmente.');
+      }
+    } catch (error) {
+      console.error('Erro ao processar QR Code:', error);
+      setFormData(prev => ({ ...prev, numero_documento: result }));
+      setShowScanner(false);
+      toast.success('QR Code lido, mas pode não ser do formato esperado');
+    }
   };
 
   const handleQrCodeError = (error: any) => {
@@ -496,9 +514,9 @@ export default function CadastrarDocumento() {
           
           {showScanner && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
-              <div className="bg-white p-4 rounded-lg shadow-lg max-w-md w-full">
+              <div className="bg-white p-4 rounded-lg shadow-lg max-w-lg w-full">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Ler QR Code do Cupom Fiscal</h3>
+                  <h3 className="text-xl font-semibold text-blue-800">Ler QR Code do Cupom Fiscal</h3>
                   <Button
                     type="button"
                     variant="secondary"
@@ -510,12 +528,15 @@ export default function CadastrarDocumento() {
                   </Button>
                 </div>
                 <p className="text-sm text-gray-600 mb-4">
-                  Posicione o QR Code do cupom fiscal no centro da câmera para leitura automática.
+                  Posicione o QR Code do cupom fiscal dentro da área destacada para leitura rápida.
                 </p>
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeResult}
                   onScanError={handleQrCodeError}
                 />
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-gray-500">Se estiver com dificuldades, aproxime a câmera e mantenha o dispositivo estável.</p>
+                </div>
               </div>
             </div>
           )}
