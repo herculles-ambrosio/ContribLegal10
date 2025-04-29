@@ -1,4 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ContribLegal10
+
+Sistema para extração automática de dados de cupons fiscais a partir de QR Codes para uso em controle de gastos e prestações de contas.
+
+## Funcionalidades
+
+- Extração de dados de cupons fiscais (NFC-e) da SEFAZ-MG a partir do link QR Code
+- Interface web para uso imediato
+- API com suporte a CORS para integração com aplicativos móveis
+- Exemplos de integração para React Native e Flutter
+
+## Como usar
+
+### Web
+
+1. Acesse a página de ajuda em `/qrcode-helper`
+2. Escaneie o QR Code do cupom fiscal
+3. Cole o link gerado no campo e clique em "Extrair Dados"
+4. Os dados do cupom fiscal (valor e data) serão exibidos na tela
+
+### Integração com aplicativos móveis
+
+Use a rota `/api/fiscal-receipt-mobile` para integrar com seu aplicativo móvel. Consulte a página `/mobile-example` para exemplos de código em React Native e Flutter.
+
+## Tecnologias utilizadas
+
+- Next.js 14
+- React
+- TypeScript
+- Cheerio para web scraping
+- TailwindCSS para estilização
+
+## Desenvolvimento
+
+```bash
+# Instalar dependências
+npm install
+
+# Executar em modo de desenvolvimento
+npm run dev
+
+# Fazer build para produção
+npm run build
+
+# Iniciar versão de produção
+npm start
+```
+
+## Licença
+
+Este projeto está licenciado sob a licença MIT.
 
 ## Getting Started
 
