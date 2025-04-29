@@ -12,6 +12,8 @@ import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import useDeviceDetect from '@/hooks/useDeviceDetect';
+import { extractDataFromFiscalReceipt } from '@/lib/services/fiscalReceiptService';
+import LoadingModal from '@/components/ui/LoadingModal';
 
 // Importar o scanner de QR code dinamicamente (apenas no cliente)
 const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
@@ -35,6 +37,8 @@ export default function CadastrarDocumento() {
     arquivo: null as File | null
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionMessage, setExtractionMessage] = useState('Extraindo dados do cupom fiscal...');
 
   const tiposDocumento = [
     { value: 'nota_servico', label: 'Nota Fiscal de Serviço' },
@@ -178,7 +182,7 @@ export default function CadastrarDocumento() {
     }
   };
 
-  const handleQrCodeResult = (result: string) => {
+  const handleQrCodeResult = async (result: string) => {
     console.log('QR Code detectado:', result);
     
     // Extrair o link do QR code e armazenar no campo de número do documento
@@ -187,16 +191,65 @@ export default function CadastrarDocumento() {
       if (result.includes('fazenda.mg.gov.br') || result.includes('sefaz.mg.gov.br') || 
           result.includes('portalsped') || result.includes('nfce')) {
         
-        // Armazena o link completo
+        // Armazena o link completo no campo número do documento
         setFormData(prev => ({ ...prev, numero_documento: result }));
         
         // Fechar o scanner automaticamente
         setShowScanner(false);
         
-        toast.success('QR Code lido com sucesso!');
+        // Mostrar modal de carregamento
+        setExtractionMessage('Extraindo dados do cupom fiscal...');
+        setIsExtracting(true);
+        
+        try {
+          // Extrair dados adicionais do cupom fiscal
+          const fiscalReceiptData = await extractDataFromFiscalReceipt(result);
+          
+          // Esconder modal de carregamento
+          setIsExtracting(false);
+          
+          if (fiscalReceiptData.error) {
+            console.error('Erro na extração de dados:', fiscalReceiptData.error);
+            toast.error('QR Code lido, mas não foi possível extrair todos os dados. Preencha manualmente.');
+            return;
+          }
+          
+          // Atualizar os campos com os dados extraídos
+          const formUpdates: any = {};
+          
+          if (fiscalReceiptData.valor) {
+            formUpdates.valor = fiscalReceiptData.valor;
+          }
+          
+          if (fiscalReceiptData.dataEmissao) {
+            formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+          }
+          
+          // Atualizar o formulário com os dados extraídos
+          setFormData(prev => ({ ...prev, ...formUpdates }));
+          
+          // Mostrar feedback de sucesso com detalhes
+          const fieldsExtracted = [];
+          if (fiscalReceiptData.valor) fieldsExtracted.push('valor');
+          if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
+          
+          if (fieldsExtracted.length > 0) {
+            toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
+          } else {
+            toast.success('QR Code lido com sucesso!');
+          }
+        } catch (extractionError) {
+          // Esconder modal de carregamento em caso de erro
+          setIsExtracting(false);
+          console.error('Erro ao extrair dados:', extractionError);
+          toast.error('QR Code lido, mas não foi possível extrair dados adicionais.');
+        }
       } else {
         console.warn('QR Code não parece ser de um cupom fiscal da SEFAZ MG:', result);
-        toast.error('O QR Code não parece ser de um cupom fiscal válido da SEFAZ MG. Tente novamente ou insira manualmente.');
+        // Armazenar o resultado mesmo assim
+        setFormData(prev => ({ ...prev, numero_documento: result }));
+        setShowScanner(false);
+        toast.error('O QR Code não parece ser de um cupom fiscal válido da SEFAZ MG.');
       }
     } catch (error) {
       console.error('Erro ao processar QR Code:', error);
@@ -539,6 +592,13 @@ export default function CadastrarDocumento() {
                 </div>
               </div>
             </div>
+          )}
+          
+          {isExtracting && (
+            <LoadingModal
+              isOpen={isExtracting}
+              message={extractionMessage}
+            />
           )}
         </Card>
       </div>
