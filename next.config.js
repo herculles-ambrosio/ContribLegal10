@@ -12,10 +12,21 @@ const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   
-  // Permitir origens específicas em ambiente de desenvolvimento
+  // Configurar diretório src como pasta base
+  distDir: '.next',
+  
+  // Define onde o Next.js deve procurar pela pasta app ou pages
   experimental: {
+    appDir: true,
+    serverComponentsExternalPackages: [],
     allowedDevOrigins: ['192.168.1.225'],
-  }
+  },
+  
+  // No Next.js 15, você define a pasta raiz de aplicação assim
+  reactStrictMode: true,
+  sassOptions: {
+    includePaths: ['./src'],
+  },
 };
 
 module.exports = nextConfig; 

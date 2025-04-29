@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "node vercel-build.js",
     "start": "next start",
     "lint": "next lint",
     "create-admin": "node -r dotenv/config src/scripts/create-admin.js",
