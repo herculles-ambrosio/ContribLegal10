@@ -1,0 +1,18 @@
+# Definir que arquivos .ts e .tsx são considerados linguagem TypeScript
+*.ts linguist-language=TypeScript
+*.tsx linguist-language=TypeScript
+
+# Definir que arquivos .js e .jsx são também parte do TypeScript (normalmente gerados)
+*.js linguist-language=TypeScript
+*.jsx linguist-language=TypeScript
+
+# Definir que arquivos .json são considerados como TypeScript
+package.json linguist-language=TypeScript
+tsconfig.json linguist-language=TypeScript
+
+# Ignorar node_modules e arquivos gerados automaticamente
+node_modules/* linguist-vendored
+.next/* linguist-generated=true
+
+# Considerar arquivos CSS como parte do projeto
+*.css linguist-detectable=true 
