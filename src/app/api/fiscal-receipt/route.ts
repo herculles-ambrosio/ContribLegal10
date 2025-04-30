@@ -173,48 +173,109 @@ export async function POST(request: NextRequest) {
           text.includes('Emissão:') ||
           text.includes('Data da Emissão') ||
           text.includes('Data Emissão') ||
+          text.includes('Data da Compra') ||
+          text.includes('Data da Nota') ||
+          text.includes('Data do Documento') ||
+          text.includes('Data da Venda') ||
           text.includes('Data NF-e')) {
         
         console.log('API - Encontrado texto relacionado à data:', text);
         
         // A data geralmente está no próximo elemento ou no mesmo elemento
         const nextElement = $(el).next();
-        const dataText = nextElement.length ? nextElement.text().trim() : $(el).text().replace(/.*Emissão:?\s*/, '').trim();
+        const dataText = nextElement.length ? nextElement.text().trim() : $(el).text().replace(/.*(?:Emissão|Data)[:\s]+/, '').trim();
         
         console.log('API - Possível texto de data:', dataText);
         
-        if (dataText && /\d+\/\d+\/\d+/.test(dataText)) {
-          // Extrair a data no formato DD/MM/YYYY
-          const dateMatch = dataText.match(/(\d+\/\d+\/\d+)/);
+        if (dataText) {
+          // Tentar vários formatos de data comuns
+          let dateMatch = null;
+          
+          // Formato DD/MM/YYYY
+          dateMatch = dataText.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
           if (dateMatch) {
             dataEmissao = dateMatch[1];
-            console.log('API - Data extraída:', dataEmissao);
+            console.log('API - Data extraída (formato DD/MM/YYYY):', dataEmissao);
+            return false; // Interromper o loop each
+          }
+          
+          // Formato DD-MM-YYYY
+          dateMatch = dataText.match(/(\d{1,2}-\d{1,2}-\d{4})/);
+          if (dateMatch) {
+            const parts = dateMatch[1].split('-');
+            dataEmissao = `${parts[0]}/${parts[1]}/${parts[2]}`;
+            console.log('API - Data extraída (formato DD-MM-YYYY):', dataEmissao);
+            return false;
+          }
+          
+          // Formato DD.MM.YYYY
+          dateMatch = dataText.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+          if (dateMatch) {
+            dataEmissao = `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`;
+            console.log('API - Data extraída (formato DD.MM.YYYY):', dataEmissao);
+            return false;
+          }
+          
+          // Formato YYYY-MM-DD (ISO)
+          dateMatch = dataText.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (dateMatch) {
+            dataEmissao = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
+            console.log('API - Data extraída (formato YYYY-MM-DD):', dataEmissao);
+            return false;
           }
         }
       }
     });
 
-    // Tentativa 2: Buscar por padrões de data no formato DD/MM/YYYY
+    // Tentativa 2: Buscar por padrões de data em vários formatos comuns
     if (!dataEmissao) {
-      const dateRegex = /(\d{2}\/\d{2}\/\d{4})/g;
-      const dateMatches = [...html.matchAll(dateRegex)];
-      if (dateMatches.length > 0) {
-        console.log('API - Datas encontradas via regex:', dateMatches.map(m => m[1]));
+      // Tentar vários formatos de data em sequência
+      
+      // Formato DD/MM/YYYY
+      const dateRegex1 = /(\d{1,2}\/\d{1,2}\/\d{4})/g;
+      const dateMatches1 = [...html.matchAll(dateRegex1)];
+      if (dateMatches1.length > 0) {
+        console.log('API - Datas encontradas (DD/MM/YYYY):', dateMatches1.map(m => m[1]));
         // Pegar a primeira data encontrada
-        dataEmissao = dateMatches[0][1];
-        console.log('API - Data extraída por regex:', dataEmissao);
+        dataEmissao = dateMatches1[0][1];
+        console.log('API - Data extraída por regex (DD/MM/YYYY):', dataEmissao);
+      }
+      
+      // Se ainda não encontrou, tentar formato YYYY-MM-DD
+      if (!dataEmissao) {
+        const dateRegex2 = /(\d{4})-(\d{2})-(\d{2})/g;
+        const dateMatches2 = [...html.matchAll(dateRegex2)];
+        if (dateMatches2.length > 0) {
+          console.log('API - Datas encontradas (YYYY-MM-DD):', dateMatches2.map(m => m[0]));
+          // Converter para DD/MM/YYYY
+          const match = dateMatches2[0];
+          dataEmissao = `${match[3]}/${match[2]}/${match[1]}`;
+          console.log('API - Data extraída por regex (YYYY-MM-DD):', dataEmissao);
+        }
+      }
+      
+      // Se ainda não encontrou, tentar formato DD.MM.YYYY
+      if (!dataEmissao) {
+        const dateRegex3 = /(\d{1,2})\.(\d{1,2})\.(\d{4})/g;
+        const dateMatches3 = [...html.matchAll(dateRegex3)];
+        if (dateMatches3.length > 0) {
+          console.log('API - Datas encontradas (DD.MM.YYYY):', dateMatches3.map(m => m[0]));
+          // Converter para DD/MM/YYYY
+          const match = dateMatches3[0];
+          dataEmissao = `${match[1]}/${match[2]}/${match[3]}`;
+          console.log('API - Data extraída por regex (DD.MM.YYYY):', dataEmissao);
+        }
       }
     }
-
-    // Converter a data para o formato aceito pelo input (YYYY-MM-DD)
+    
+    // Normalizar o formato da data para DD/MM/AAAA
     if (dataEmissao) {
       const parts = dataEmissao.split('/');
       if (parts.length === 3) {
         const [day, month, year] = parts;
         if (day && month && year) {
-          // Manter no formato DD/MM/AAAA em vez de converter para ISO
           dataEmissao = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-          console.log('API - Data formatada:', dataEmissao);
+          console.log('API - Data formatada para DD/MM/AAAA:', dataEmissao);
         }
       }
     }

@@ -222,7 +222,15 @@ export default function CadastrarDocumento() {
           }
           
           if (fiscalReceiptData.dataEmissao) {
-            formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+            // Converter data de DD/MM/AAAA para YYYY-MM-DD (formato aceito pelo input type="date")
+            const dataParts = fiscalReceiptData.dataEmissao.split('/');
+            if (dataParts.length === 3) {
+              const [dia, mes, ano] = dataParts;
+              formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+              console.log('Data formatada para o formulário:', formUpdates.data_emissao);
+            } else {
+              formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+            }
           }
           
           // Atualizar o formulário com os dados extraídos
