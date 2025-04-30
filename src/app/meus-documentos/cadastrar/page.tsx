@@ -6,7 +6,7 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaFileInvoice, FaCalendarAlt, FaMoneyBillWave, FaUpload, FaQrcode } from 'react-icons/fa';
+import { FaFileInvoice, FaCalendarAlt, FaMoneyBillWave, FaUpload, FaQrcode, FaExternalLinkAlt } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
@@ -399,6 +399,23 @@ export default function CadastrarDocumento() {
     }
   };
 
+  // Função para verificar se o texto é uma URL válida
+  const isValidUrl = (text: string): boolean => {
+    try {
+      new URL(text);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Função para abrir o link do cupom fiscal
+  const handleOpenLink = (url: string) => {
+    if (isValidUrl(url)) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <Layout isAuthenticated>
       <div className="flex justify-center items-center min-h-[70vh]">
@@ -438,21 +455,33 @@ export default function CadastrarDocumento() {
               </div>
               
               <div className="relative">
-                <Input
+                <Input 
                   label="Número do Documento"
-                  name="numero_documento"
+                  name="numero_documento" 
                   placeholder="Número da nota ou comprovante"
                   icon={FaFileInvoice}
-                  value={formData.numero_documento}
-                  onChange={handleChange}
+                  value={formData.numero_documento} 
+                  onChange={handleChange} 
                   error={errors.numero_documento}
                   fullWidth
                   required
                   variant="dark"
                 />
-                
-                {formData.tipo === 'cupom_fiscal' && (
-                  <div className="absolute right-2 top-9">
+               
+                <div className="absolute right-2 top-9 flex">
+                  {formData.tipo === 'cupom_fiscal' && isValidUrl(formData.numero_documento) && (
+                    <Button
+                      type="button"
+                      variant="info"
+                      onClick={() => handleOpenLink(formData.numero_documento)}
+                      className="w-8 h-8 min-w-[2rem] flex items-center justify-center rounded-full mr-2"
+                      aria-label="Abrir link do cupom fiscal"
+                      title="Abrir link do cupom fiscal"
+                    >
+                      <FaExternalLinkAlt size={16} />
+                    </Button>
+                  )}
+                  {formData.tipo === 'cupom_fiscal' && (
                     <Button
                       type="button"
                       variant="info"
@@ -463,8 +492,8 @@ export default function CadastrarDocumento() {
                     >
                       <FaQrcode size={16} />
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               
               <Input

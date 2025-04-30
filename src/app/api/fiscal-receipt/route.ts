@@ -100,7 +100,15 @@ export async function POST(request: NextRequest) {
           text.includes('Valor total do documento fiscal') ||
           text.includes('Valor Total da NF-e') ||
           text.includes('Valor total da compra') ||
-          text.includes('TOTAL R$')) {
+          text.includes('TOTAL R$') ||
+          text.includes('Valor pago') ||
+          text.includes('VALOR PAGO') ||
+          text.includes('Total pago') ||
+          text.includes('TOTAL PAGO') ||
+          text.includes('Pagamento') ||
+          text.includes('Valor do pagamento') ||
+          text.includes('Valor a pagar') ||
+          text.includes('TOTAL A PAGAR')) {
         
         console.log('API - Encontrado texto relacionado ao valor:', text);
         
@@ -204,8 +212,9 @@ export async function POST(request: NextRequest) {
       if (parts.length === 3) {
         const [day, month, year] = parts;
         if (day && month && year) {
-          dataEmissao = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-          console.log('API - Data convertida para formato ISO:', dataEmissao);
+          // Manter no formato DD/MM/AAAA em vez de converter para ISO
+          dataEmissao = `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+          console.log('API - Data formatada:', dataEmissao);
         }
       }
     }
