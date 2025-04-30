@@ -609,15 +609,21 @@ export default function CadastrarDocumento() {
                     ✕
                   </Button>
                 </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  Posicione o QR Code do cupom fiscal dentro da área destacada para leitura rápida.
-                </p>
+                <div className="text-sm text-gray-600 mb-4 space-y-2">
+                  <p className="font-medium">Para melhor resultado:</p>
+                  <ul className="list-disc pl-5">
+                    <li>Mantenha o QR Code bem iluminado</li>
+                    <li>Posicione o código dentro da área destacada</li>
+                    <li>Aproxime a câmera para códigos pequenos</li>
+                    <li>Se necessário, use o botão de lanterna</li>
+                  </ul>
+                </div>
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeResult}
                   onScanError={handleQrCodeError}
                 />
                 <div className="mt-3 text-center">
-                  <p className="text-xs text-gray-500">Se estiver com dificuldades, aproxime a câmera e mantenha o dispositivo estável.</p>
+                  <p className="text-xs text-gray-500">Se estiver com dificuldades para ler o QR Code, tente usar os botões acima para alternativas.</p>
                 </div>
               </div>
             </div>
