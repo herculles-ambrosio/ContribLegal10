@@ -232,7 +232,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         {/* Main content */}
         <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6">
+          <div className="w-full p-4 sm:p-6">
             {children}
           </div>
         </main>

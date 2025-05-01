@@ -1253,7 +1253,7 @@ export default function AdminDashboard() {
   
   return (
     <AdminLayout>
-      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+      <div className="w-full bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
             <h1 className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
@@ -1431,7 +1431,7 @@ export default function AdminDashboard() {
                 </p>
               </div>
             </div>
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
               <div className="inline-block min-w-full align-middle">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -1653,71 +1653,69 @@ export default function AdminDashboard() {
               </div>
             )}
             
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr className="bg-gray-100 text-gray-700">
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nome</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">E-mail</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">CPF/CNPJ</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Administrador</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usuariosFiltrados.map(user => (
-                      <tr key={user.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">{user.nome_completo}</td>
-                        <td className="py-3 px-4">{user.email}</td>
-                        <td className="py-3 px-4">{user.cpf_cnpj}</td>
-                        <td className="py-3 px-4">
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nome</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">E-mail</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">CPF/CNPJ</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Admin</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usuariosFiltrados.map(user => (
+                    <tr key={user.id} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4">{user.nome_completo}</td>
+                      <td className="py-3 px-4">{user.email}</td>
+                      <td className="py-3 px-4">{user.cpf_cnpj}</td>
+                      <td className="py-3 px-4">
+                        {editingUsuarioId === user.id ? (
+                          <select 
+                            className="border rounded p-1"
+                            value={user.master}
+                            onChange={(e) => toggleUsuarioMaster(user.id, e.target.value as 'S' | 'N')}
+                          >
+                            <option value="S">Sim</option>
+                            <option value="N">Não</option>
+                          </select>
+                        ) : (
+                          <span 
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                              ${user.master === 'S' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}
+                          >
+                            {user.master === 'S' ? 'Sim' : 'Não'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex space-x-2">
                           {editingUsuarioId === user.id ? (
-                            <select 
-                              className="border rounded p-1"
-                              value={user.master}
-                              onChange={(e) => toggleUsuarioMaster(user.id, e.target.value as 'S' | 'N')}
-                            >
-                              <option value="S">Sim</option>
-                              <option value="N">Não</option>
-                            </select>
-                          ) : (
-                            <span 
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                ${user.master === 'S' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}
-                            >
-                              {user.master === 'S' ? 'Sim' : 'Não'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex space-x-2">
-                            {editingUsuarioId === user.id ? (
-                              <>
-                                <button 
-                                  onClick={() => setEditingUsuarioId(null)}
-                                  className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded"
-                                  title="Cancelar"
-                                >
-                                  <FaUndo />
-                                </button>
-                              </>
-                            ) : (
+                            <>
                               <button 
-                                onClick={() => setEditingUsuarioId(user.id)}
-                                className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
-                                title="Editar"
+                                onClick={() => setEditingUsuarioId(null)}
+                                className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded"
+                                title="Cancelar"
                               >
-                                <FaEdit />
+                                <FaUndo />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            </>
+                          ) : (
+                            <button 
+                              onClick={() => setEditingUsuarioId(user.id)}
+                              className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded"
+                              title="Editar"
+                            >
+                              <FaEdit />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
