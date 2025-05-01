@@ -1253,7 +1253,7 @@ export default function AdminDashboard() {
   
   return (
     <AdminLayout>
-      <div className="w-full bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
             <h1 className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
@@ -1433,16 +1433,16 @@ export default function AdminDashboard() {
             </div>
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="w-full divide-y divide-gray-200">
                   <thead>
                     <tr className="bg-gray-100 text-gray-700">
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Contribuinte</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Documento</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Data</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Valor</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nº da Sorte</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Status</th>
-                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Contribuinte</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Documento</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Data</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Valor</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Nº da Sorte</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Status</th>
+                      <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1450,27 +1450,27 @@ export default function AdminDashboard() {
                       const usuario = doc.usuarios;
                       return (
                         <tr key={doc.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             <div>{usuario?.nome_completo}</div>
                             <div className="text-sm text-gray-500">{usuario?.cpf_cnpj}</div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             <div className="font-medium">{getTipoDocumentoLabel(doc.tipo)}</div>
                             <div className="text-sm text-gray-500">#{doc.numero_documento}</div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             {new Date(doc.data_emissao).toLocaleDateString('pt-BR')}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             {new Intl.NumberFormat('pt-BR', {
                               style: 'currency',
                               currency: 'BRL'
                             }).format(doc.valor)}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             {doc.numero_sorteio}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             <span 
                               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                                 ${doc.status === 'VALIDADO' ? 'bg-green-100 text-green-800' : 
@@ -1483,7 +1483,7 @@ export default function AdminDashboard() {
                               {doc.status}
                             </span>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             <div className="flex space-x-2">
                               <button 
                                 onClick={() => atualizarStatusDocumento(doc.id, 'VALIDADO')}
@@ -1654,23 +1654,25 @@ export default function AdminDashboard() {
             )}
             
             <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="w-full divide-y divide-gray-200">
                 <thead>
                   <tr className="bg-gray-100 text-gray-700">
-                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nome</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">E-mail</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">CPF/CNPJ</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Admin</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Contribuinte</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Documento</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Data</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Valor</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Nº da Sorte</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Status</th>
+                    <th className="py-3 px-2 sm:px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {usuariosFiltrados.map(user => (
                     <tr key={user.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">{user.nome_completo}</td>
-                      <td className="py-3 px-4">{user.email}</td>
-                      <td className="py-3 px-4">{user.cpf_cnpj}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2 sm:px-4">{user.nome_completo}</td>
+                      <td className="py-3 px-2 sm:px-4">{user.email}</td>
+                      <td className="py-3 px-2 sm:px-4">{user.cpf_cnpj}</td>
+                      <td className="py-3 px-2 sm:px-4">
                         {editingUsuarioId === user.id ? (
                           <select 
                             className="border rounded p-1"
@@ -1689,7 +1691,7 @@ export default function AdminDashboard() {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2 sm:px-4">
                         <div className="flex space-x-2">
                           {editingUsuarioId === user.id ? (
                             <>
