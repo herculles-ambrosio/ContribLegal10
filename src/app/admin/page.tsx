@@ -1253,196 +1253,196 @@ export default function AdminDashboard() {
   
   return (
     <AdminLayout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
-              <h1 className="text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
-                Painel Administrativo
-              </h1>
-              <div className="flex space-x-2 items-center">
-                <span className="text-sm text-gray-600 dark:text-gray-300">
-                  Administrador: <strong>{nomeUsuarioLogado}</strong>
-                </span>
-                <button
-                  onClick={() => router.push('/admin/faixas-numero-sorte')}
-                  className="ml-4 inline-flex items-center px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-                >
-                  <FaEdit className="mr-1" /> Configurar Números da Sorte
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex space-x-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
+              Painel Administrativo
+            </h1>
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Administrador: <strong>{nomeUsuarioLogado}</strong>
+              </span>
               <button
-                className={`py-2 px-4 focus:outline-none ${
-                  activeTab === 'documentos'
-                    ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
-                }`}
-                onClick={() => setActiveTab('documentos')}
+                onClick={() => router.push('/admin/faixas-numero-sorte')}
+                className="inline-flex items-center px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition text-sm"
               >
-                <span className="flex items-center">
-                  <FaFileAlt className="mr-2" /> Documentos
-                </span>
-              </button>
-              <button
-                className={`py-2 px-4 focus:outline-none ${
-                  activeTab === 'usuarios'
-                    ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
-                }`}
-                onClick={() => setActiveTab('usuarios')}
-              >
-                <span className="flex items-center">
-                  <FaUsersCog className="mr-2" /> Usuários
-                </span>
+                <FaEdit className="mr-1" /> Configurar Números da Sorte
               </button>
             </div>
           </div>
           
-          {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <div className="flex space-x-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <button
+              className={`py-2 px-4 focus:outline-none whitespace-nowrap ${
+                activeTab === 'documentos'
+                  ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
+              }`}
+              onClick={() => setActiveTab('documentos')}
+            >
+              <span className="flex items-center">
+                <FaFileAlt className="mr-2" /> Documentos
+              </span>
+            </button>
+            <button
+              className={`py-2 px-4 focus:outline-none whitespace-nowrap ${
+                activeTab === 'usuarios'
+                  ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
+              }`}
+              onClick={() => setActiveTab('usuarios')}
+            >
+              <span className="flex items-center">
+                <FaUsersCog className="mr-2" /> Usuários
+              </span>
+            </button>
+          </div>
+        </div>
+        
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          </div>
+        ) : null}
+        
+        {operacaoEmAndamento && (
+          <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-4 rounded-lg shadow-lg flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+              <span>Processando operação...</span>
             </div>
-          ) : null}
-          
-          {operacaoEmAndamento && (
-            <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white p-4 rounded-lg shadow-lg flex items-center space-x-3">
-                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
-                <span>Processando operação...</span>
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'documentos' && (
-            <div className="p-6">
-              {/* Filtros */}
-              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-medium mb-3 flex items-center">
-                  <FaFilter className="mr-2 text-blue-500" />
-                  Filtros
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
-                      Contribuinte
-                    </label>
-                    <input
-                      type="text"
-                      id="filtroContribuinte"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Nome do contribuinte"
-                      value={filtroContribuinte}
-                      onChange={(e) => setFiltroContribuinte(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
-                      Tipo de Documento
-                    </label>
-                    <select
-                      id="filtroTipoDocumento"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      value={filtroTipoDocumento}
-                      onChange={(e) => setFiltroTipoDocumento(e.target.value)}
-                    >
-                      <option value="">Todos</option>
-                      <option value="nota_servico">Nota Fiscal de Serviço</option>
-                      <option value="cupom_fiscal">Cupom Fiscal</option>
-                      <option value="imposto">Comprovante de Pagamento de Imposto</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="filtroCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
-                      CPF/CNPJ
-                    </label>
-                    <input
-                      type="text"
-                      id="filtroCpfCnpj"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="CPF ou CNPJ"
-                      value={filtroCpfCnpj}
-                      onChange={(e) => setFiltroCpfCnpj(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
-                      Status
-                    </label>
-                    <select
-                      id="filtroStatus"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      value={filtroStatus}
-                      onChange={(e) => setFiltroStatus(e.target.value)}
-                    >
-                      <option value="">Todos</option>
-                      <option value="VALIDADO">Validado</option>
-                      <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
-                      <option value="INVÁLIDO">Inválido</option>
-                    </select>
-                  </div>
+          </div>
+        )}
+        
+        {activeTab === 'documentos' && (
+          <div className="p-6">
+            {/* Filtros */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium mb-3 flex items-center">
+                <FaFilter className="mr-2 text-blue-500" />
+                Filtros
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
+                    Contribuinte
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroContribuinte"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Nome do contribuinte"
+                    value={filtroContribuinte}
+                    onChange={(e) => setFiltroContribuinte(e.target.value)}
+                  />
                 </div>
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={limparFiltros}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                <div>
+                  <label htmlFor="filtroTipoDocumento" className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de Documento
+                  </label>
+                  <select
+                    id="filtroTipoDocumento"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={filtroTipoDocumento}
+                    onChange={(e) => setFiltroTipoDocumento(e.target.value)}
                   >
-                    Limpar Filtros
-                  </button>
+                    <option value="">Todos</option>
+                    <option value="nota_servico">Nota Fiscal de Serviço</option>
+                    <option value="cupom_fiscal">Cupom Fiscal</option>
+                    <option value="imposto">Comprovante de Pagamento de Imposto</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="filtroCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                    CPF/CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroCpfCnpj"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="CPF ou CNPJ"
+                    value={filtroCpfCnpj}
+                    onChange={(e) => setFiltroCpfCnpj(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="filtroStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                    Status
+                  </label>
+                  <select
+                    id="filtroStatus"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    value={filtroStatus}
+                    onChange={(e) => setFiltroStatus(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="VALIDADO">Validado</option>
+                    <option value="AGUARDANDO VALIDAÇÃO">Aguardando Validação</option>
+                    <option value="INVÁLIDO">Inválido</option>
+                  </select>
                 </div>
               </div>
-              
-              {/* Totalizadores dos documentos filtrados */}
-              <div className="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
-                <div className="flex flex-wrap justify-between items-center">
-                  <div className="text-blue-800">
-                    <span className="font-medium">Documentos filtrados:</span> {documentosFiltrados.length} de {totalDocumentos}
-                  </div>
-                  <div className="text-blue-800">
-                    <span className="font-medium">Valor total:</span> {new Intl.NumberFormat('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL'
-                    }).format(calcularValorTotal())}
-                  </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={limparFiltros}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+            
+            {/* Totalizadores dos documentos filtrados */}
+            <div className="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="flex flex-wrap justify-between items-center">
+                <div className="text-blue-800">
+                  <span className="font-medium">Documentos filtrados:</span> {documentosFiltrados.length} de {totalDocumentos}
+                </div>
+                <div className="text-blue-800">
+                  <span className="font-medium">Valor total:</span> {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }).format(calcularValorTotal())}
                 </div>
               </div>
-              
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-green-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
-                  <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
-                </div>
-                <div className="bg-yellow-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-yellow-800">Aguardando Validação</h3>
-                  <p className="text-3xl font-bold text-yellow-600">{totalAguardandoValidacao}</p>
-                </div>
-                <div className="bg-red-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-red-800">Invalidados</h3>
-                  <p className="text-3xl font-bold text-red-600">{totalInvalidados}</p>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-blue-800">Valor Total</h3>
-                  <p className="text-3xl font-bold text-blue-600">
-                    {new Intl.NumberFormat('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL'
-                    }).format(valorTotalDocumentos)}
-                  </p>
-                </div>
+            </div>
+            
+            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-green-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
+                <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white">
+              <div className="bg-yellow-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-yellow-800">Aguardando Validação</h3>
+                <p className="text-3xl font-bold text-yellow-600">{totalAguardandoValidacao}</p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-red-800">Invalidados</h3>
+                <p className="text-3xl font-bold text-red-600">{totalInvalidados}</p>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-blue-800">Valor Total</h3>
+                <p className="text-3xl font-bold text-blue-600">
+                  {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }).format(valorTotalDocumentos)}
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full divide-y divide-gray-200">
                   <thead>
                     <tr className="bg-gray-100 text-gray-700">
-                      <th className="py-3 px-4 text-left">Contribuinte</th>
-                      <th className="py-3 px-4 text-left">Documento</th>
-                      <th className="py-3 px-4 text-left">Data</th>
-                      <th className="py-3 px-4 text-left">Valor</th>
-                      <th className="py-3 px-4 text-left">Nº da Sorte</th>
-                      <th className="py-3 px-4 text-left">Status</th>
-                      <th className="py-3 px-4 text-left">Ações</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Contribuinte</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Documento</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Data</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Valor</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nº da Sorte</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Status</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1534,133 +1534,135 @@ export default function AdminDashboard() {
                 </table>
               </div>
             </div>
-          )}
-          
-          {activeTab === 'usuarios' && (
-            <div className="p-6">
-              {/* Filtros */}
-              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-medium mb-3 flex items-center">
-                  <FaFilter className="mr-2 text-blue-500" />
-                  Filtros
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
-                      Usuário
-                    </label>
-                    <input
-                      type="text"
-                      id="filtroUsuarioNome"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Nome do usuário"
-                      value={filtroUsuarioNome}
-                      onChange={(e) => setFiltroUsuarioNome(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="filtroUsuarioCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
-                      CPF/CNPJ
-                    </label>
-                    <input
-                      type="text"
-                      id="filtroUsuarioCpfCnpj"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="CPF ou CNPJ"
-                      value={filtroUsuarioCpfCnpj}
-                      onChange={(e) => setFiltroUsuarioCpfCnpj(e.target.value)}
-                    />
-                  </div>
+          </div>
+        )}
+        
+        {activeTab === 'usuarios' && (
+          <div className="p-6">
+            {/* Filtros */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium mb-3 flex items-center">
+                <FaFilter className="mr-2 text-blue-500" />
+                Filtros
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
+                    Usuário
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroUsuarioNome"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Nome do usuário"
+                    value={filtroUsuarioNome}
+                    onChange={(e) => setFiltroUsuarioNome(e.target.value)}
+                  />
                 </div>
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setFiltroUsuarioNome('');
-                      setFiltroUsuarioCpfCnpj('');
-                    }}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                <div>
+                  <label htmlFor="filtroUsuarioCpfCnpj" className="block text-sm font-medium text-gray-700 mb-1">
+                    CPF/CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    id="filtroUsuarioCpfCnpj"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="CPF ou CNPJ"
+                    value={filtroUsuarioCpfCnpj}
+                    onChange={(e) => setFiltroUsuarioCpfCnpj(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => {
+                    setFiltroUsuarioNome('');
+                    setFiltroUsuarioCpfCnpj('');
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                >
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+            
+            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-purple-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
+                <p className="text-3xl font-bold text-purple-600">{totalUsuarios}</p>
+              </div>
+              <div className="bg-indigo-50 p-4 rounded-lg shadow">
+                <h3 className="text-lg font-medium text-indigo-800">Administradores</h3>
+                <p className="text-3xl font-bold text-indigo-600">{totalAdmins}</p>
+              </div>
+            </div>
+            
+            {usuariosFiltrados.length === 0 && (
+              <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                <h3 className="text-lg font-medium text-red-800 mb-2">Erro ao carregar usuários</h3>
+                <p className="mb-3">Não foi possível carregar a lista de usuários devido a problemas de configuração ou permissão.</p>
+                
+                <h4 className="font-bold mt-2">Como resolver:</h4>
+                <ol className="list-decimal ml-5 space-y-2 mt-1">
+                  <li>Verifique se a variável <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY</code> está configurada no arquivo <code className="bg-gray-100 px-1 rounded">.env.local</code></li>
+                  <li>Execute o script SQL <code className="bg-gray-100 px-1 rounded">src/db/fix-rls-complete.sql</code> no SQL Editor do Supabase:
+                    <ul className="list-disc ml-5 mt-1">
+                      <li>Acesse o dashboard do Supabase</li>
+                      <li>Vá para SQL Editor</li>
+                      <li>Cole o conteúdo do arquivo</li>
+                      <li>Execute o script</li>
+                    </ul>
+                  </li>
+                  <li>Confirme que as políticas RLS estão configuradas corretamente executando o script de verificação:
+                    <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
+                      node src/scripts/verify-database.js
+                    </pre>
+                  </li>
+                  <li>Reinicie o servidor</li>
+                  <li>Se os problemas persistirem, você pode temporariamente desabilitar o RLS para diagnóstico:
+                    <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
+                      ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
+                      ALTER TABLE documentos DISABLE ROW LEVEL SECURITY;
+                    </pre>
+                  </li>
+                </ol>
+                
+                <h4 className="font-bold mt-3">Exemplo de .env.local:</h4>
+                <pre className="bg-gray-800 text-white p-3 rounded text-sm my-2 overflow-x-auto">
+                  NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co<br />
+                  NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1...<br />
+                  NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1...
+                </pre>
+                
+                <div className="mt-4 flex space-x-4">
+                  <a 
+                    href="https://supabase.com/docs/guides/api/server-side-admin" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
                   >
-                    Limpar Filtros
+                    Documentação do Supabase sobre chaves de serviço
+                  </a>
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    Recarregar página
                   </button>
                 </div>
               </div>
-              
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-purple-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
-                  <p className="text-3xl font-bold text-purple-600">{totalUsuarios}</p>
-                </div>
-                <div className="bg-indigo-50 p-4 rounded-lg shadow">
-                  <h3 className="text-lg font-medium text-indigo-800">Administradores</h3>
-                  <p className="text-3xl font-bold text-indigo-600">{totalAdmins}</p>
-                </div>
-              </div>
-              
-              {usuariosFiltrados.length === 0 && (
-                <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                  <h3 className="text-lg font-medium text-red-800 mb-2">Erro ao carregar usuários</h3>
-                  <p className="mb-3">Não foi possível carregar a lista de usuários devido a problemas de configuração ou permissão.</p>
-                  
-                  <h4 className="font-bold mt-2">Como resolver:</h4>
-                  <ol className="list-decimal ml-5 space-y-2 mt-1">
-                    <li>Verifique se a variável <code className="bg-gray-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY</code> está configurada no arquivo <code className="bg-gray-100 px-1 rounded">.env.local</code></li>
-                    <li>Execute o script SQL <code className="bg-gray-100 px-1 rounded">src/db/fix-rls-complete.sql</code> no SQL Editor do Supabase:
-                      <ul className="list-disc ml-5 mt-1">
-                        <li>Acesse o dashboard do Supabase</li>
-                        <li>Vá para SQL Editor</li>
-                        <li>Cole o conteúdo do arquivo</li>
-                        <li>Execute o script</li>
-                      </ul>
-                    </li>
-                    <li>Confirme que as políticas RLS estão configuradas corretamente executando o script de verificação:
-                      <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
-                        node src/scripts/verify-database.js
-                      </pre>
-                    </li>
-                    <li>Reinicie o servidor</li>
-                    <li>Se os problemas persistirem, você pode temporariamente desabilitar o RLS para diagnóstico:
-                      <pre className="bg-gray-800 text-white p-2 rounded text-sm my-2 overflow-x-auto">
-                        ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
-                        ALTER TABLE documentos DISABLE ROW LEVEL SECURITY;
-                      </pre>
-                    </li>
-                  </ol>
-                  
-                  <h4 className="font-bold mt-3">Exemplo de .env.local:</h4>
-                  <pre className="bg-gray-800 text-white p-3 rounded text-sm my-2 overflow-x-auto">
-                    NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co<br />
-                    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1...<br />
-                    NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1...
-                  </pre>
-                  
-                  <div className="mt-4 flex space-x-4">
-                    <a 
-                      href="https://supabase.com/docs/guides/api/server-side-admin" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Documentação do Supabase sobre chaves de serviço
-                    </a>
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                    >
-                      Recarregar página
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white">
+            )}
+            
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full divide-y divide-gray-200">
                   <thead>
                     <tr className="bg-gray-100 text-gray-700">
-                      <th className="py-3 px-4 text-left">Nome</th>
-                      <th className="py-3 px-4 text-left">E-mail</th>
-                      <th className="py-3 px-4 text-left">CPF/CNPJ</th>
-                      <th className="py-3 px-4 text-left">Administrador</th>
-                      <th className="py-3 px-4 text-left">Ações</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Nome</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">E-mail</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">CPF/CNPJ</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Administrador</th>
+                      <th className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1717,8 +1719,8 @@ export default function AdminDashboard() {
                 </table>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );

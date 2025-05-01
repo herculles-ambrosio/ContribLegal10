@@ -100,14 +100,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     {
       title: 'Documentos',
       icon: FaClipboardList,
-      href: '/admin/documentos',
-      active: pathname?.includes('/admin/documentos'),
+      href: '/admin',
+      active: pathname === '/admin' || pathname === '/admin/',
     },
     {
       title: 'Números da Sorte',
       icon: FaTrophy,
-      href: '/admin/numeros-sorte',
-      active: pathname?.includes('/admin/numeros-sorte'),
+      href: '/admin/faixas-numero-sorte',
+      active: pathname?.includes('/admin/faixas-numero-sorte') || pathname?.includes('/admin/numeros-sorte'),
     },
     {
       title: 'Relatórios',
@@ -231,8 +231,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         )}
 
         {/* Main content */}
-        <main className={`flex-1 p-6 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
-          {children}
+        <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>
