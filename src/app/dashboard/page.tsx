@@ -75,6 +75,29 @@ export default function Dashboard() {
           return;
         }
 
+        // Verificar status da empresa
+        const { data: empresaData, error: empresaError } = await supabase
+          .from('empresa')
+          .select('status')
+          .single();
+
+        if (empresaError) {
+          console.error('Erro ao buscar status da empresa:', empresaError);
+          // Continuar com o comportamento padrão
+          console.log('Redirecionando para painel do contribuinte');
+          router.push('/contribuinte');
+          return;
+        } 
+        
+        // Verificar o status da empresa
+        if (empresaData && empresaData.status === 'BLOQUEADO') {
+          toast.error('O Contribuinte Legal encontra-se BLOQUEADO no momento');
+          // Deslogar o usuário e redirecionar para a página inicial
+          await supabase.auth.signOut();
+          router.push('/');
+          return;
+        } 
+        
         // Para usuários não-admin, redirecionar para o painel do contribuinte
         console.log('Redirecionando para painel do contribuinte');
         router.push('/contribuinte');

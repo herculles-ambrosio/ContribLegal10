@@ -29,6 +29,7 @@ export default function CadastrarDocumento() {
   const [showScanner, setShowScanner] = useState(false);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const { isMobile } = useDeviceDetect();
+  const [empresaStatus, setEmpresaStatus] = useState<string>('ATIVO');
   const [formData, setFormData] = useState({
     tipo: 'cupom_fiscal' as TipoDocumento,
     numero_documento: '',
@@ -432,6 +433,51 @@ export default function CadastrarDocumento() {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
+
+  useEffect(() => {
+    const verificarAutenticacao = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          toast.error('Você precisa estar logado para acessar esta página');
+          router.push('/login');
+          return;
+        }
+
+        // Verificar status da empresa
+        const { data: empresaData, error: empresaError } = await supabase
+          .from('empresa')
+          .select('status')
+          .single();
+
+        if (!empresaError && empresaData) {
+          setEmpresaStatus(empresaData.status);
+          
+          // Se a empresa estiver bloqueada, redirecionar para a página inicial
+          if (empresaData.status === 'BLOQUEADO') {
+            toast.error('O Contribuinte Legal encontra-se BLOQUEADO no momento');
+            await supabase.auth.signOut();
+            router.push('/');
+            return;
+          }
+
+          // Se a empresa estiver inativa, redirecionar para o painel do contribuinte
+          if (empresaData.status === 'INATIVO') {
+            toast.error('O Contribuinte Legal encontra-se INATIVO no momento. Não é possível cadastrar novos documentos.');
+            router.push('/contribuinte');
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        toast.error('Erro ao verificar autenticação');
+        router.push('/login');
+      }
+    };
+    
+    verificarAutenticacao();
+  }, [router]);
 
   return (
     <Layout isAuthenticated>

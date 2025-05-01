@@ -115,3 +115,36 @@ Verifique:
 3. Se o usuário que está acessando tem a flag `master = 'S'` no banco de dados
 
 Mais detalhes na documentação: [ADMIN_CONFIG.md](./ADMIN_CONFIG.md)
+
+## Estrutura de Banco de Dados
+
+### Tabelas Principais
+
+- **usuarios**: Armazena os dados dos usuários registrados
+- **documentos**: Armazena os documentos fiscais cadastrados pelos usuários
+- **numeros_sorte_documento**: Armazena os números da sorte gerados para cada documento validado
+- **faixas_numero_sorte**: Configura as faixas de valores para geração de números da sorte
+- **empresa**: Armazena os dados da empresa cliente do Contribuinte Legal, incluindo status de ativação (ATIVO, INATIVO ou BLOQUEADO)
+
+### Modelo de Dados
+
+#### Tabela `empresa`
+
+| Campo             | Tipo                 | Descrição                                                      |
+|-------------------|----------------------|----------------------------------------------------------------|
+| id                | UUID                 | Identificador único da empresa                                 |
+| nome_razao_social | TEXT                 | Nome ou razão social da empresa                                |
+| cnpj              | TEXT                 | CNPJ da empresa                                                |
+| endereco          | TEXT                 | Endereço da empresa                                            |
+| bairro            | TEXT                 | Bairro                                                         |
+| municipio         | TEXT                 | Município                                                      |
+| uf                | TEXT                 | Estado (UF)                                                    |
+| cep               | TEXT                 | CEP                                                            |
+| status            | TEXT                 | Status da empresa: ATIVO, INATIVO ou BLOQUEADO                 |
+| created_at        | TIMESTAMP            | Data de criação do registro                                    |
+| updated_at        | TIMESTAMP            | Data da última atualização                                     |
+
+O status da empresa controla o acesso ao sistema:
+- **ATIVO**: Acesso completo ao sistema
+- **INATIVO**: Usuários podem apenas visualizar documentos (sem poder cadastrar novos)
+- **BLOQUEADO**: Bloqueia completamente o acesso ao sistema

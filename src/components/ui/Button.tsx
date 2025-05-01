@@ -1,7 +1,7 @@
 import { ButtonHTMLAttributes, useState } from 'react';
 import { IconType } from 'react-icons';
 
-type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info';
+type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info' | 'outlineLight';
 
 type ButtonProps = {
   variant?: ButtonVariant;
@@ -9,6 +9,7 @@ type ButtonProps = {
   isLoading?: boolean;
   fullWidth?: boolean;
   animated?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -17,7 +18,8 @@ const variantClasses: Record<ButtonVariant, string> = {
   success: 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-300/50',
   danger: 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-300/50',
   warning: 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg shadow-yellow-300/50',
-  info: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-300/50'
+  info: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg shadow-cyan-300/50',
+  outlineLight: 'bg-transparent hover:bg-white/10 text-white border border-white/30 hover:border-white/70'
 };
 
 export default function Button({
@@ -26,17 +28,25 @@ export default function Button({
   isLoading = false,
   fullWidth = false,
   animated = true,
+  size = 'md',
   className = '',
   children,
   ...props
 }: ButtonProps) {
   const [isHovered, setIsHovered] = useState(false);
   
-  const baseClasses = "font-medium py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300 transform";
+  const baseClasses = "font-medium rounded-lg focus:outline-none transition-all duration-300 transform";
   const hoverEffect = isHovered && animated ? 'scale-105' : '';
   const widthClass = fullWidth ? 'w-full' : '';
   const variantClass = variantClasses[variant];
-  const combinedClasses = `btn-modern ${baseClasses} ${variantClass} ${widthClass} ${hoverEffect} ${className}`;
+  
+  const sizeClasses = {
+    sm: 'py-1 px-3 text-sm',
+    md: 'py-2 px-4',
+    lg: 'py-3 px-6 text-lg'
+  };
+  
+  const combinedClasses = `btn-modern ${baseClasses} ${variantClass} ${widthClass} ${hoverEffect} ${sizeClasses[size]} ${className}`;
   
   return (
     <button 

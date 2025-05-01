@@ -5,7 +5,7 @@ import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy, FaFileContract } from 'react-icons/fa';
+import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy, FaFileContract, FaExclamationTriangle } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -37,6 +37,7 @@ export default function PainelContribuinte() {
   const [isLoading, setIsLoading] = useState(true);
   const [nomeUsuario, setNomeUsuario] = useState('');
   const [documentosRecentes, setDocumentosRecentes] = useState<Documento[]>([]);
+  const [empresaStatus, setEmpresaStatus] = useState<string>('ATIVO');
   const [estatisticas, setEstatisticas] = useState<Estatisticas>({
     totalDocumentos: 0,
     totalValidados: 0,
@@ -64,6 +65,28 @@ export default function PainelContribuinte() {
         }
         
         setNomeUsuario(usuario.nome_completo || '');
+
+        // Verificar status da empresa
+        try {
+          const { data: empresaData, error: empresaError } = await supabase
+            .from('empresa')
+            .select('status')
+            .single();
+
+          if (!empresaError && empresaData) {
+            setEmpresaStatus(empresaData.status);
+            
+            // Se a empresa estiver bloqueada, redirecionar para a página inicial
+            if (empresaData.status === 'BLOQUEADO') {
+              toast.error('O Contribuinte Legal encontra-se BLOQUEADO no momento');
+              await supabase.auth.signOut();
+              router.push('/');
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status da empresa:', error);
+        }
         
         await carregarDados();
       } catch (error) {
@@ -213,6 +236,23 @@ export default function PainelContribuinte() {
         </p>
       </div>
       
+      {/* Alerta de sistema inativo */}
+      {empresaStatus === 'INATIVO' && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 rounded">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <FaExclamationTriangle className="h-5 w-5 text-yellow-500" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium">
+                O Contribuinte Legal encontra-se INATIVO no momento. É permitido apenas consultar seus documentos, 
+                mas não será possível cadastrar novos documentos ou gerar Números da Sorte.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
@@ -335,13 +375,21 @@ export default function PainelContribuinte() {
       {/* Acesso rápido */}
       <Card title="Acesso Rápido">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
-          <Link href="/meus-documentos/cadastrar">
-            <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">
-              <FaPlus className="text-3xl text-blue-500 mx-auto mb-3" />
-              <h3 className="font-medium">Cadastrar Documento</h3>
-              <p className="text-sm text-gray-600 mt-1">Adicionar nova nota fiscal</p>
+          {empresaStatus === 'ATIVO' ? (
+            <Link href="/meus-documentos/cadastrar">
+              <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">
+                <FaPlus className="text-3xl text-blue-500 mx-auto mb-3" />
+                <h3 className="font-medium">Cadastrar Documento</h3>
+                <p className="text-sm text-gray-600 mt-1">Adicionar nova nota fiscal</p>
+              </div>
+            </Link>
+          ) : (
+            <div className="bg-gray-50 opacity-50 cursor-not-allowed rounded-lg p-4 text-center">
+              <FaPlus className="text-3xl text-gray-400 mx-auto mb-3" />
+              <h3 className="font-medium text-gray-500">Cadastrar Documento</h3>
+              <p className="text-sm text-gray-500 mt-1">Opção indisponível</p>
             </div>
-          </Link>
+          )}
           
           <Link href="/meus-documentos">
             <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">

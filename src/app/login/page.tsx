@@ -182,8 +182,37 @@ export default function Login() {
             
             router.push('/admin');
           } else {
-            toast.success('Login realizado com sucesso!');
-            router.push('/dashboard');
+            // Verificar status da empresa
+            const { data: empresaData, error: empresaError } = await supabase
+              .from('empresa')
+              .select('status')
+              .single();
+
+            if (empresaError) {
+              console.error('Erro ao buscar status da empresa:', empresaError);
+              toast.success('Login realizado com sucesso!');
+              router.push('/dashboard');
+              return;
+            }
+
+            // Armazenar o status da empresa no localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('empresa_status', empresaData.status);
+            }
+
+            // Verificar o status da empresa
+            if (empresaData && empresaData.status === 'BLOQUEADO') {
+              toast.error('O Contribuinte Legal encontra-se BLOQUEADO no momento');
+              // Não redirecionar e deslogar o usuário
+              await supabase.auth.signOut();
+              return;
+            } else if (empresaData && empresaData.status === 'INATIVO') {
+              toast.warning('O Contribuinte Legal encontra-se INATIVO no momento, é permitido apenas consultar seus documentos, mas não será possível geração do Número da Sorte');
+              router.push('/dashboard');
+            } else {
+              toast.success('Login realizado com sucesso!');
+              router.push('/dashboard');
+            }
           }
         } catch (userDataError) {
           console.error('Erro ao processar dados do usuário:', userDataError);

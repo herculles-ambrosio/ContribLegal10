@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Usuario, Documento } from '@/types/supabase';
-import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter, FaDice } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter, FaDice, FaUsers, FaClipboardList, FaTrophy, FaCog, FaChartBar, FaBuilding } from 'react-icons/fa';
 import Layout from '@/components/Layout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
 import { toast } from 'react-hot-toast';
+import Link from 'next/link';
+import Card from '@/components/ui/Card';
 
 // Função para criar cliente do Supabase com opções específicas para admin
 const criarClienteAdmin = async () => {
