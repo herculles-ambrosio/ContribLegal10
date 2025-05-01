@@ -474,15 +474,16 @@ export default function CadastrarDocumento() {
                   fullWidth
                   required
                   variant="dark"
+                  className="pr-24"
                 />
                
-                <div className="absolute right-2 top-9 flex">
+                <div className="absolute right-2 top-9 flex items-center space-x-2 z-10">
                   {formData.tipo === 'cupom_fiscal' && isValidUrl(formData.numero_documento) && (
                     <Button
                       type="button"
                       variant="info"
                       onClick={() => handleOpenLink(formData.numero_documento)}
-                      className="w-8 h-8 min-w-[2rem] flex items-center justify-center rounded-full mr-2"
+                      className="w-8 h-8 min-w-[2rem] flex items-center justify-center rounded-full"
                       aria-label="Abrir link do cupom fiscal"
                       title="Abrir link do cupom fiscal"
                     >
@@ -504,18 +505,30 @@ export default function CadastrarDocumento() {
                 </div>
               </div>
               
-              <Input
-                label="Data de Emissão"
-                name="data_emissao"
-                type="date"
-                icon={FaCalendarAlt}
-                value={formData.data_emissao}
-                onChange={handleChange}
-                error={errors.data_emissao}
-                fullWidth
-                required
-                variant="dark"
-              />
+              <div className="relative">
+                <label htmlFor="data_emissao" className="block mb-2 text-sm font-medium text-white">
+                  <FaCalendarAlt className="inline mr-2" />
+                  Data de Emissão
+                </label>
+                <input
+                  type="date"
+                  id="data_emissao"
+                  name="data_emissao"
+                  value={formData.data_emissao}
+                  onChange={handleChange}
+                  className={`block w-full px-4 py-3 rounded-lg shadow-sm focus:outline-none focus:ring-2 
+                    transition-all duration-200 ease-in-out bg-blue-900/30 border
+                    ${errors.data_emissao ? 'border-red-500' : 'border-blue-400/30'} 
+                    text-white placeholder-blue-200/60 focus:ring-blue-400 focus:border-blue-300
+                    [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert
+                    [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:hover:opacity-100
+                    sm:text-base text-sm`}
+                  required
+                />
+                {errors.data_emissao && (
+                  <p className="mt-2 text-sm text-red-600">{errors.data_emissao}</p>
+                )}
+              </div>
               
               <div className="relative">
                 <label htmlFor="valor" className="block mb-2 text-sm font-medium text-white">
