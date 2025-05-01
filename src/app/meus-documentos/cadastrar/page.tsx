@@ -150,7 +150,8 @@ export default function CadastrarDocumento() {
       }
     }
     
-    if (!formData.arquivo) {
+    // Verificar arquivo apenas se não for cupom fiscal
+    if (formData.tipo !== 'cupom_fiscal' && !formData.arquivo) {
       newErrors.arquivo = 'Arquivo é obrigatório';
     }
     
@@ -304,50 +305,56 @@ export default function CadastrarDocumento() {
       
       const userId = session.user.id;
       
-      // Verificar tamanho do arquivo
-      if (formData.arquivo && formData.arquivo.size > 5 * 1024 * 1024) {
-        throw new Error('O arquivo não pode ser maior que 5MB');
-      }
+      let uploadData: { path?: string } | null = null;
       
-      // Verificar tipo do arquivo
-      const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-      if (formData.arquivo && !allowedTypes.includes(formData.arquivo.type)) {
-        throw new Error('Tipo de arquivo não permitido. Use apenas PDF, JPG ou PNG');
-      }
-      
-      // Gerar nome único para o arquivo
-      const fileExt = formData.arquivo!.name.split('.').pop()?.toLowerCase();
-      if (!fileExt || !['pdf', 'jpg', 'jpeg', 'png'].includes(fileExt)) {
-        throw new Error('Extensão de arquivo inválida');
-      }
-      
-      const fileName = `${userId}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      
-      console.log('Iniciando upload do arquivo...', {
-        fileName,
-        fileSize: formData.arquivo!.size,
-        fileType: formData.arquivo!.type
-      });
-      
-      // Fazer upload do arquivo para o Supabase Storage
-      const { error: uploadError, data: uploadData } = await supabase
-        .storage
-        .from('documentos')
-        .upload(fileName, formData.arquivo!, {
-          cacheControl: '3600',
-          upsert: false
+      // Processar o upload do arquivo apenas se não for cupom fiscal ou se um arquivo foi fornecido
+      if (formData.tipo !== 'cupom_fiscal' && formData.arquivo) {
+        // Verificar tamanho do arquivo
+        if (formData.arquivo.size > 5 * 1024 * 1024) {
+          throw new Error('O arquivo não pode ser maior que 5MB');
+        }
+        
+        // Verificar tipo do arquivo
+        const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+        if (!allowedTypes.includes(formData.arquivo.type)) {
+          throw new Error('Tipo de arquivo não permitido. Use apenas PDF, JPG ou PNG');
+        }
+        
+        // Gerar nome único para o arquivo
+        const fileExt = formData.arquivo.name.split('.').pop()?.toLowerCase();
+        if (!fileExt || !['pdf', 'jpg', 'jpeg', 'png'].includes(fileExt)) {
+          throw new Error('Extensão de arquivo inválida');
+        }
+        
+        const fileName = `${userId}/${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+        
+        console.log('Iniciando upload do arquivo...', {
+          fileName,
+          fileSize: formData.arquivo.size,
+          fileType: formData.arquivo.type
         });
-      
-      if (uploadError) {
-        console.error('Erro detalhado no upload:', uploadError);
-        throw new Error(`Erro no upload do arquivo: ${uploadError.message}`);
+        
+        // Fazer upload do arquivo para o Supabase Storage
+        const { error: uploadError, data } = await supabase
+          .storage
+          .from('documentos')
+          .upload(fileName, formData.arquivo, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Erro detalhado no upload:', uploadError);
+          throw new Error(`Erro no upload do arquivo: ${uploadError.message}`);
+        }
+        
+        if (!data?.path) {
+          throw new Error('Erro ao obter o caminho do arquivo após upload');
+        }
+        
+        uploadData = data;
+        console.log('Arquivo enviado com sucesso:', uploadData);
       }
-      
-      if (!uploadData?.path) {
-        throw new Error('Erro ao obter o caminho do arquivo após upload');
-      }
-      
-      console.log('Arquivo enviado com sucesso:', uploadData);
       
       // Gerar número aleatório para sorteio (entre 000000000 e 999999999)
       const numeroSorteio = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
@@ -366,7 +373,7 @@ export default function CadastrarDocumento() {
         numero_documento: formData.numero_documento,
         data_emissao: formData.data_emissao,
         valor: valorFormatado,
-        arquivo_url: uploadData.path,
+        arquivo_url: uploadData?.path || null, // Pode ser null para cupom fiscal
         numero_sorteio: numeroSorteio,
         status: 'AGUARDANDO VALIDAÇÃO'
       };
@@ -381,15 +388,17 @@ export default function CadastrarDocumento() {
       if (insertError) {
         console.error('Erro ao inserir documento:', insertError);
         
-        // Se houver erro na inserção, tentar remover o arquivo
-        console.log('Removendo arquivo após erro na inserção...');
-        const { error: removeError } = await supabase
-          .storage
-          .from('documentos')
-          .remove([uploadData.path]);
-          
-        if (removeError) {
-          console.error('Erro ao remover arquivo:', removeError);
+        // Se houver erro na inserção e tiver arquivo, tentar removê-lo
+        if (uploadData?.path) {
+          console.log('Removendo arquivo após erro na inserção...');
+          const { error: removeError } = await supabase
+            .storage
+            .from('documentos')
+            .remove([uploadData.path]);
+            
+          if (removeError) {
+            console.error('Erro ao remover arquivo:', removeError);
+          }
         }
         
         throw new Error(`Erro ao cadastrar documento: ${insertError.message}`);
@@ -560,37 +569,39 @@ export default function CadastrarDocumento() {
                 </p>
               </div>
               
-              <div>
-                <label htmlFor="arquivo" className="block mb-2 text-sm font-medium text-white">
-                  Arquivo do Documento
-                </label>
-                <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col w-full h-32 border-2 border-dashed border-blue-400/30 bg-blue-900/10 rounded-lg cursor-pointer hover:bg-blue-800/20 transition-colors">
-                    <div className="flex flex-col items-center justify-center pt-7">
-                      <FaUpload className="w-8 h-8 text-blue-300" />
-                      <p className="pt-1 text-sm text-blue-200">
-                        {formData.arquivo 
-                          ? formData.arquivo.name 
-                          : 'Clique para selecionar ou arraste o arquivo aqui'}
-                      </p>
-                    </div>
-                    <input 
-                      id="arquivo" 
-                      name="arquivo" 
-                      type="file" 
-                      accept=".pdf,.jpg,.jpeg,.png" 
-                      className="hidden"
-                      onChange={handleFileChange}
-                    />
+              {formData.tipo !== 'cupom_fiscal' && (
+                <div>
+                  <label htmlFor="arquivo" className="block mb-2 text-sm font-medium text-white">
+                    Arquivo do Documento
                   </label>
+                  <div className="flex items-center justify-center w-full">
+                    <label className="flex flex-col w-full h-32 border-2 border-dashed border-blue-400/30 bg-blue-900/10 rounded-lg cursor-pointer hover:bg-blue-800/20 transition-colors">
+                      <div className="flex flex-col items-center justify-center pt-7">
+                        <FaUpload className="w-8 h-8 text-blue-300" />
+                        <p className="pt-1 text-sm text-blue-200">
+                          {formData.arquivo 
+                            ? formData.arquivo.name 
+                            : 'Clique para selecionar ou arraste o arquivo aqui'}
+                        </p>
+                      </div>
+                      <input 
+                        id="arquivo" 
+                        name="arquivo" 
+                        type="file" 
+                        accept=".pdf,.jpg,.jpeg,.png" 
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    </label>
+                  </div>
+                  {errors.arquivo && (
+                    <p className="mt-2 text-sm text-red-400">{errors.arquivo}</p>
+                  )}
+                  <p className="mt-1 text-xs text-blue-200">
+                    Formatos aceitos: PDF, JPG, JPEG, PNG (máx. 5MB)
+                  </p>
                 </div>
-                {errors.arquivo && (
-                  <p className="mt-2 text-sm text-red-400">{errors.arquivo}</p>
-                )}
-                <p className="mt-1 text-xs text-blue-200">
-                  Formatos aceitos: PDF, JPG, JPEG, PNG (máx. 5MB)
-                </p>
-              </div>
+              )}
             </div>
             
             <div className="flex gap-4 mt-8 justify-end">
