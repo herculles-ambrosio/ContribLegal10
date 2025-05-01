@@ -1254,8 +1254,8 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+        <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 md:mb-4">
             <h1 className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 md:mb-0">
               Painel Administrativo
             </h1>
@@ -1272,9 +1272,9 @@ export default function AdminDashboard() {
             </div>
           </div>
           
-          <div className="flex space-x-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <div className="flex space-x-3 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
             <button
-              className={`py-2 px-4 focus:outline-none whitespace-nowrap ${
+              className={`py-2 px-3 focus:outline-none whitespace-nowrap ${
                 activeTab === 'documentos'
                   ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
                   : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
@@ -1286,7 +1286,7 @@ export default function AdminDashboard() {
               </span>
             </button>
             <button
-              className={`py-2 px-4 focus:outline-none whitespace-nowrap ${
+              className={`py-2 px-3 focus:outline-none whitespace-nowrap ${
                 activeTab === 'usuarios'
                   ? 'border-b-2 border-blue-500 text-blue-700 dark:text-blue-400 font-medium'
                   : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'
@@ -1316,14 +1316,14 @@ export default function AdminDashboard() {
         )}
         
         {activeTab === 'documentos' && (
-          <div className="p-6">
+          <div className="p-3 sm:p-4">
             {/* Filtros */}
-            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
               <h3 className="text-lg font-medium mb-3 flex items-center">
                 <FaFilter className="mr-2 text-blue-500" />
                 Filtros
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
                 <div>
                   <label htmlFor="filtroContribuinte" className="block text-sm font-medium text-gray-700 mb-1">
                     Contribuinte
@@ -1408,20 +1408,20 @@ export default function AdminDashboard() {
               </div>
             </div>
             
-            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-green-50 p-4 rounded-lg shadow">
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              <div className="bg-green-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-green-800">Cupons Validados</h3>
                 <p className="text-3xl font-bold text-green-600">{totalValidados}</p>
               </div>
-              <div className="bg-yellow-50 p-4 rounded-lg shadow">
+              <div className="bg-yellow-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-yellow-800">Aguardando Validação</h3>
                 <p className="text-3xl font-bold text-yellow-600">{totalAguardandoValidacao}</p>
               </div>
-              <div className="bg-red-50 p-4 rounded-lg shadow">
+              <div className="bg-red-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-red-800">Invalidados</h3>
                 <p className="text-3xl font-bold text-red-600">{totalInvalidados}</p>
               </div>
-              <div className="bg-blue-50 p-4 rounded-lg shadow">
+              <div className="bg-blue-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-blue-800">Valor Total</h3>
                 <p className="text-3xl font-bold text-blue-600">
                   {new Intl.NumberFormat('pt-BR', {
@@ -1538,14 +1538,14 @@ export default function AdminDashboard() {
         )}
         
         {activeTab === 'usuarios' && (
-          <div className="p-6">
+          <div className="p-3 sm:p-4">
             {/* Filtros */}
-            <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
               <h3 className="text-lg font-medium mb-3 flex items-center">
                 <FaFilter className="mr-2 text-blue-500" />
                 Filtros
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div>
                   <label htmlFor="filtroUsuarioNome" className="block text-sm font-medium text-gray-700 mb-1">
                     Usuário
@@ -1573,7 +1573,7 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-3 flex justify-end">
                 <button
                   onClick={() => {
                     setFiltroUsuarioNome('');
@@ -1586,12 +1586,12 @@ export default function AdminDashboard() {
               </div>
             </div>
             
-            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-purple-50 p-4 rounded-lg shadow">
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+              <div className="bg-purple-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-purple-800">Total de Usuários</h3>
                 <p className="text-3xl font-bold text-purple-600">{totalUsuarios}</p>
               </div>
-              <div className="bg-indigo-50 p-4 rounded-lg shadow">
+              <div className="bg-indigo-50 p-3 rounded-lg shadow">
                 <h3 className="text-lg font-medium text-indigo-800">Administradores</h3>
                 <p className="text-3xl font-bold text-indigo-600">{totalAdmins}</p>
               </div>
