@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter, FaDice, FaUsers, FaClipboardList, FaTrophy, FaCog, FaChartBar, FaBuilding, FaTrash, FaDownload, FaUnlock, FaLock, FaEye, FaExclamationCircle } from 'react-icons/fa';
+import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import { Usuario, Documento } from '@/types/supabase';
-import { FaCheck, FaTimes, FaClock, FaUsersCog, FaFileAlt, FaEdit, FaSave, FaUndo, FaSearch, FaFilter, FaDice, FaUsers, FaClipboardList, FaTrophy, FaCog, FaChartBar, FaBuilding } from 'react-icons/fa';
-import Layout from '@/components/Layout';
+import AdminLayout from '@/components/AdminLayout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { createClient } from '@supabase/supabase-js';
-import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
 
@@ -1250,16 +1251,8 @@ export default function AdminDashboard() {
     }
   };
   
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-  
   return (
-    <Layout isAuthenticated>
+    <AdminLayout>
       <div className="container mx-auto px-4 py-8">
         <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
@@ -1727,6 +1720,6 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
-    </Layout>
+    </AdminLayout>
   );
 } 
