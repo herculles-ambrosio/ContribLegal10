@@ -14,43 +14,19 @@ import { createClient } from '@supabase/supabase-js';
 const criarClienteAdmin = async () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const supabaseServiceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
   
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error('Variáveis de ambiente do Supabase não configuradas');
-    return supabase;
-  }
-  
-  if (!supabaseServiceKey) {
-    console.error('ERRO CRÍTICO: NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY não está configurada');
-    return supabase;
+    return null;
   }
   
   try {
-    const authKey = supabaseServiceKey;
-    
-    const clienteAdmin = createClient(supabaseUrl, authKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      },
-      global: {
-        headers: {
-          'apikey': authKey,
-          'Authorization': `Bearer ${authKey}`,
-          'x-client-info': 'admin-dashboard'
-        }
-      }
-    });
-    
-    if (!clienteAdmin) {
-      return supabase;
-    }
-    
-    return clienteAdmin;
+    // Utilizamos o cliente padrão, mas com as credenciais do usuário logado
+    // que já possui as permissões de admin verificadas
+    return supabase;
   } catch (error) {
     console.error('Erro ao criar cliente admin:', error);
-    return supabase;
+    return null;
   }
 };
 
@@ -320,51 +296,162 @@ export default function DocumentosAdmin() {
     setFiltroStatus('');
   };
   
-  // Função para buscar faixas de número da sorte de forma mais precisa
-  const buscarFaixaNumeroSorte = async (adminClient: any, valor: number) => {
+  // Função para buscar a faixa de números da sorte com base no valor do documento
+  const buscarFaixaNumeroSorte = async (valor: number): Promise<any> => {
     try {
-      console.log(`Buscando faixa para valor: ${valor}`);
+      console.log(`Buscando faixa para o valor: ${valor}`);
       
-      // Consultar faixas diretamente com a API do Supabase
-      const { data, error } = await adminClient
+      // Corrigir a lógica dos operadores:
+      // Valor deve estar entre valor_de e valor_ate, ou seja:
+      // valor >= valor_de e valor <= valor_ate
+      const { data, error } = await supabase
         .from('faixas_numero_sorte')
         .select('*')
-        .lte('valor_ate', valor)
-        .gte('valor_de', valor)
-        .order('valor_de', { ascending: true })
-        .limit(1);
+        .lte('valor_de', valor)  // valor_de <= valor
+        .gte('valor_ate', valor); // valor_ate >= valor
       
       if (error) {
-        console.error('Erro ao buscar faixa via API:', error);
+        console.error('Erro ao buscar faixa:', error);
         return null;
       }
       
-      if (data && data.length > 0) {
-        console.log(`Faixa encontrada:`, data[0]);
-        return data[0];
-      }
-      
-      // Se não encontrou, buscar a primeira faixa como fallback
-      const { data: defaultData, error: defaultError } = await adminClient
-        .from('faixas_numero_sorte')
-        .select('*')
-        .order('valor_de', { ascending: true })
-        .limit(1);
-      
-      if (defaultError) {
-        console.error('Erro ao buscar faixa padrão:', defaultError);
+      if (!data || data.length === 0) {
+        console.log(`Nenhuma faixa encontrada para o valor ${valor}`);
         return null;
       }
       
-      if (defaultData && defaultData.length > 0) {
-        console.log(`Usando faixa padrão:`, defaultData[0]);
-        return defaultData[0];
-      }
-      
-      return null;
+      console.log('Faixa encontrada:', data[0]);
+      return data[0];
     } catch (error) {
       console.error('Erro ao buscar faixa:', error);
       return null;
+    }
+  };
+  
+  // Gerar números da sorte para um documento
+  const gerarNumerosSorte = async (documentoId: string, valorDocumento: number): Promise<boolean> => {
+    try {
+      console.log(`Gerando números da sorte para documento ${documentoId} com valor ${valorDocumento}`);
+      
+      // Verificar se já existem números da sorte para este documento
+      const { data: numerosExistentes, error: checkError } = await supabase
+        .from('numeros_sorte_documento')
+        .select('numero_sorte')
+        .eq('documento_id', documentoId);
+      
+      if (checkError) {
+        console.error('Erro ao verificar números da sorte existentes:', checkError);
+        toast.error('Erro ao verificar números da sorte existentes');
+        return false;
+      }
+      
+      if (numerosExistentes && numerosExistentes.length > 0) {
+        console.log(`Documento já possui ${numerosExistentes.length} números da sorte`);
+        toast.success(`Documento já possui ${numerosExistentes.length} números da sorte`);
+        return true;
+      }
+      
+      // Buscar a faixa de números da sorte
+      const faixa = await buscarFaixaNumeroSorte(valorDocumento);
+      if (!faixa) {
+        console.error(`Faixa de valor não encontrada para valor ${valorDocumento}`);
+        toast.error(`Faixa de valor não encontrada para geração de números`);
+        return false;
+      }
+      
+      console.log(`Faixa encontrada: ${faixa.valor_de} a ${faixa.valor_ate}, quantidade: ${faixa.quantidade_numeros}`);
+      
+      // Quantidade de números a gerar de acordo com a faixa
+      const quantidadeNumeros = faixa.quantidade_numeros || 1;
+      console.log(`Quantidade de números a gerar: ${quantidadeNumeros}`);
+      
+      // Obter todos os números da sorte já utilizados para evitar duplicidade
+      const { data: todosNumeros, error: numerosTotaisError } = await supabase
+        .from('numeros_sorte_documento')
+        .select('numero_sorte');
+      
+      if (numerosTotaisError) {
+        console.error('Erro ao buscar números da sorte existentes:', numerosTotaisError);
+        toast.error('Erro ao verificar números da sorte disponíveis');
+        return false;
+      }
+      
+      // Criar conjunto de números já utilizados para verificação mais rápida
+      const numerosUtilizados = new Set();
+      if (todosNumeros && Array.isArray(todosNumeros)) {
+        todosNumeros.forEach(item => {
+          if (item && item.numero_sorte) {
+            numerosUtilizados.add(item.numero_sorte);
+          }
+        });
+      }
+      console.log(`Já existem ${numerosUtilizados.size} números de sorte utilizados no sistema`);
+      
+      // Gerar números da sorte únicos
+      const numerosSorteGerados: string[] = [];
+      
+      // Aumentar o número máximo de tentativas para garantir que consigamos gerar todos os números necessários
+      // 100 tentativas para cada número a ser gerado
+      const maxTentativas = quantidadeNumeros * 100;
+      let tentativas = 0;
+      
+      while (numerosSorteGerados.length < quantidadeNumeros && tentativas < maxTentativas) {
+        tentativas++;
+        
+        // Gerar um número aleatório EXATAMENTE com 6 dígitos (100000 a 999999)
+        const numeroSorte = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Verificar se o número já foi utilizado
+        if (!numerosUtilizados.has(numeroSorte) && !numerosSorteGerados.includes(numeroSorte)) {
+          numerosSorteGerados.push(numeroSorte);
+          numerosUtilizados.add(numeroSorte); // Adicionar ao conjunto para não gerar duplicados nas próximas iterações
+        }
+        
+        // Log a cada 50 tentativas para debug
+        if (tentativas % 50 === 0) {
+          console.log(`${tentativas} tentativas realizadas, ${numerosSorteGerados.length}/${quantidadeNumeros} números gerados`);
+        }
+      }
+      
+      if (numerosSorteGerados.length < quantidadeNumeros) {
+        console.error(`Não foi possível gerar todos os ${quantidadeNumeros} números da sorte únicos. Apenas ${numerosSorteGerados.length} gerados.`);
+        toast.error(`Não foi possível gerar todos os números da sorte únicos (${numerosSorteGerados.length}/${quantidadeNumeros})`);
+        if (numerosSorteGerados.length === 0) {
+          return false;
+        }
+      }
+      
+      console.log(`Números gerados (${numerosSorteGerados.length}): ${numerosSorteGerados.join(', ')}`);
+      
+      // Inserir números da sorte no banco de dados
+      let sucessos = 0;
+      for (const numeroSorte of numerosSorteGerados) {
+        const { error: insertError } = await supabase
+          .from('numeros_sorte_documento')
+          .insert({
+            documento_id: documentoId,
+            numero_sorte: numeroSorte
+          });
+        
+        if (insertError) {
+          console.error('Erro ao inserir número da sorte:', insertError);
+          toast.error(`Erro ao inserir número da sorte: ${numeroSorte}`);
+        } else {
+          sucessos++;
+        }
+      }
+      
+      if (sucessos > 0) {
+        toast.success(`${sucessos} número(s) da sorte gerado(s) com sucesso`);
+        return true;
+      } else {
+        toast.error('Falha ao inserir números da sorte no banco de dados');
+        return false;
+      }
+    } catch (error) {
+      console.error('Erro ao gerar números da sorte:', error);
+      toast.error(`Erro ao gerar números da sorte: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
     }
   };
   
@@ -374,261 +461,136 @@ export default function DocumentosAdmin() {
       setOperacaoEmAndamento(true);
       console.log(`Atualizando status do documento ${id} para: ${status}`);
       
-      // Obter o status atual para atualização de contadores
+      // Obter o documento atual
       const documentoAtual = documentos.find(d => d.id === id);
-      const statusAnterior = documentoAtual?.status;
+      if (!documentoAtual) {
+        console.error(`Documento com ID ${id} não encontrado`);
+        toast.error('Documento não encontrado');
+        setOperacaoEmAndamento(false);
+        return;
+      }
+      
+      const statusAnterior = documentoAtual.status;
       console.log(`Status anterior: ${statusAnterior}`);
+
+      // Atualização direta - mais simples possível
+      const updateResult = await supabase
+        .from('documentos')
+        .update({ status })
+        .eq('id', id);
       
-      // Criar cliente admin para ignorar RLS
-      const adminClient = await criarClienteAdmin();
+      if (updateResult.error) {
+        console.error('Erro na atualização de status:', updateResult.error);
+        toast.error(`Erro ao atualizar status: ${updateResult.error.message}`);
+        setOperacaoEmAndamento(false);
+        return;
+      }
       
-      // Se estiver INVALIDANDO um documento que estava VALIDADO, 
-      // precisamos primeiro excluir os números da sorte
-      if (status === 'INVÁLIDO' && statusAnterior === 'VALIDADO') {
-        console.log(`Excluindo números da sorte do documento ${id}`);
+      console.log('Status atualizado com sucesso!');
+      
+      // Se o status for alterado para VALIDADO, gerar números da sorte
+      if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
+        console.log(`Gerando números da sorte para o documento ${id}`);
         
-        try {
-          // Excluir números da sorte usando API direta
-          const { error: deleteError } = await adminClient
-            .from('numeros_sorte_documento')
-            .delete()
-            .eq('documento_id', id);
+        if (documentoAtual.valor) {
+          const valorDocumento = parseFloat(documentoAtual.valor.toString().replace(',', '.'));
           
-          if (deleteError) {
-            console.log('Aviso: Possível falha ao excluir números da sorte:', deleteError);
-            // Continuamos mesmo se falhar (pode não ter números para excluir)
+          if (!isNaN(valorDocumento) && valorDocumento > 0) {
+            await gerarNumerosSorte(id, valorDocumento);
           } else {
-            console.log(`Números da sorte excluídos para o documento ${id}`);
+            toast.error('Valor do documento inválido');
           }
-        } catch (deleteErr) {
-          console.error('Erro ao excluir números da sorte:', deleteErr);
-          // Continuamos mesmo com erro
+        } else {
+          toast.error('Documento sem valor definido');
         }
       }
       
-      // Volta para usar a query SQL direta, que é mais confiável nesse caso
-      try {
-        // Usar RPC para executar a atualização
-        const queryUpdate = `
-          UPDATE documentos 
-          SET status = '${status}', 
-              data_validacao = ${status === 'VALIDADO' ? 'NOW()' : 'NULL'}
-          WHERE id = '${id}'
-        `;
+      // Se estiver INVALIDANDO um documento que estava VALIDADO, deletar os números da sorte
+      if (status === 'INVÁLIDO' && statusAnterior === 'VALIDADO') {
+        const deleteResult = await supabase
+          .from('numeros_sorte_documento')
+          .delete()
+          .eq('documento_id', id);
         
-        console.log("Executando query de atualização:", queryUpdate);
-        
-        const { data, error } = await adminClient.rpc('executar_query_admin', {
-          query_sql: queryUpdate
-        });
-        
-        if (error) {
-          console.error('Erro ao atualizar status do documento via RPC:', error);
-          toast.error('Erro ao atualizar status do documento');
-          setOperacaoEmAndamento(false);
-          return;
-        }
-        
-        console.log(`Status do documento atualizado para: ${status}`);
-        
-        // Se o status for alterado para VALIDADO, gerar números da sorte
-        if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
-          console.log(`Gerando números da sorte para o documento ${id}`);
-          await gerarNumerosDaSorte(adminClient, documentoAtual);
-        }
-        
-        // Atualizar a lista local
-        setDocumentos(prevState => 
-          prevState.map(doc => {
-            if (doc.id === id) {
-              return { 
-                ...doc, 
-                status,
-                data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-              };
-            }
-            return doc;
-          })
-        );
-        
-        // Atualizar contadores
-        if (statusAnterior) {
-          if (statusAnterior === 'VALIDADO') {
-            setTotalValidados(prev => prev - 1);
-          } else if (statusAnterior === 'AGUARDANDO VALIDAÇÃO') {
-            setTotalAguardandoValidacao(prev => prev - 1);
-          } else if (statusAnterior === 'INVÁLIDO') {
-            setTotalInvalidados(prev => prev - 1);
-          }
-        }
-        
-        if (status === 'VALIDADO') {
-          setTotalValidados(prev => prev + 1);
-        } else if (status === 'AGUARDANDO VALIDAÇÃO') {
-          setTotalAguardandoValidacao(prev => prev + 1);
-        } else if (status === 'INVÁLIDO') {
-          setTotalInvalidados(prev => prev + 1);
-        }
-        
-        toast.success(`Status do documento atualizado para ${status}`);
-        
-        // Recarregar os documentos após a atualização
-        await carregarDocumentos();
-      } catch (updateErr) {
-        console.error('Erro específico ao atualizar documento:', updateErr);
-        
-        // Tentar método alternativo com update via SQL direta (sem RPC)
-        try {
-          console.log("Tentando método alternativo de atualização via tabela");
-          
-          // Tenta atualizar diretamente o documento
-          const { error: fallbackError } = await adminClient
-            .from('documentos')
-            .update({
-              status: status,
-              data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-            })
-            .eq('id', id);
-            
-          if (fallbackError) {
-            console.error("Erro no método alternativo:", fallbackError);
-            toast.error("Erro ao atualizar status do documento");
-            setOperacaoEmAndamento(false);
-            return;
-          }
-          
-          console.log("Atualização realizada com método alternativo");
-          
-          // Se o status for alterado para VALIDADO, gerar números da sorte
-          if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
-            console.log(`Gerando números da sorte para o documento ${id}`);
-            await gerarNumerosDaSorte(adminClient, documentoAtual);
-          }
-          
-          // Atualizar a lista local e contadores
-          setDocumentos(prevState => 
-            prevState.map(doc => {
-              if (doc.id === id) {
-                return { 
-                  ...doc, 
-                  status,
-                  data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-                };
-              }
-              return doc;
-            })
-          );
-          
-          // Atualizar contadores
-          if (statusAnterior) {
-            if (statusAnterior === 'VALIDADO') {
-              setTotalValidados(prev => prev - 1);
-            } else if (statusAnterior === 'AGUARDANDO VALIDAÇÃO') {
-              setTotalAguardandoValidacao(prev => prev - 1);
-            } else if (statusAnterior === 'INVÁLIDO') {
-              setTotalInvalidados(prev => prev - 1);
-            }
-          }
-          
-          if (status === 'VALIDADO') {
-            setTotalValidados(prev => prev + 1);
-          } else if (status === 'AGUARDANDO VALIDAÇÃO') {
-            setTotalAguardandoValidacao(prev => prev + 1);
-          } else if (status === 'INVÁLIDO') {
-            setTotalInvalidados(prev => prev + 1);
-          }
-          
-          toast.success(`Status do documento atualizado para ${status}`);
-          
-          // Recarregar os documentos após a atualização
-          await carregarDocumentos();
-        } catch (finalError) {
-          console.error("Erro no método final de atualização:", finalError);
-          toast.error("Não foi possível atualizar o status do documento");
+        if (deleteResult.error) {
+          console.error('Erro ao excluir números da sorte:', deleteResult.error);
+        } else {
+          console.log(`Números da sorte excluídos para o documento ${id}`);
+          toast.success('Números da sorte removidos');
         }
       }
+      
+      // Atualizar a lista local
+      const documentosAtualizados = documentos.map(doc => {
+        if (doc.id === id) {
+          return { 
+            ...doc, 
+            status
+          };
+        }
+        return doc;
+      });
+      
+      setDocumentos(documentosAtualizados);
+      
+      // Aplicar os filtros atuais nos documentos atualizados
+      const novosFiltrados = aplicarFiltros(documentosAtualizados);
+      setDocumentosFiltrados(novosFiltrados);
+      
+      // Atualizar contadores para refletir a mudança
+      atualizarContadores(documentosAtualizados);
+      
+      toast.success(`Status do documento atualizado para ${status}`);
+      
+      // Recarregar documentos para garantir dados atualizados
+      await carregarDocumentos();
     } catch (error) {
       console.error('Erro ao atualizar status do documento:', error);
-      toast.error('Erro ao atualizar status do documento');
+      toast.error(`Erro ao atualizar status do documento: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setOperacaoEmAndamento(false);
     }
   };
   
-  // Função para gerar números da sorte para documento validado
-  const gerarNumerosDaSorte = async (adminClient: any, documento: DocumentoComUsuario | undefined) => {
-    if (!documento || !documento.valor) {
-      console.error('Documento inválido ou sem valor para gerar números da sorte');
-      return;
+  // Função auxiliar para aplicar filtros
+  const aplicarFiltros = (docs: DocumentoComUsuario[]): DocumentoComUsuario[] => {
+    let filtrados = [...docs];
+    
+    if (filtroContribuinte) {
+      filtrados = filtrados.filter(d => 
+        (d.usuarios?.nome_completo || '').toLowerCase().includes(filtroContribuinte.toLowerCase())
+      );
     }
     
-    try {
-      const valorDocumento = parseFloat(documento.valor.toString());
-      console.log(`Gerando números da sorte para documento com valor: R$ ${valorDocumento}`);
-      
-      // Buscar a faixa correta para o valor do documento
-      const faixa = await buscarFaixaNumeroSorte(adminClient, valorDocumento);
-      
-      if (!faixa) {
-        console.error('Nenhuma faixa de valor encontrada para a geração de números da sorte');
-        toast.error('Erro ao determinar a quantidade de números da sorte');
-        return;
-      }
-      
-      const qtdNumeros = faixa.quantidade_numeros || 1;
-      console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
-      
-      // Gerar e inserir os números da sorte
-      console.log(`Gerando ${qtdNumeros} números para o documento ${documento.id}`);
-      
-      // Para cada número a ser gerado, criamos uma entrada na tabela
-      for (let i = 0; i < qtdNumeros; i++) {
-        try {
-          // Gerar número aleatório (9 dígitos)
-          const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-          
-          // Tentar o método SQL direto primeiro
-          const sqlInsercao = `
-            INSERT INTO numeros_sorte_documento (documento_id, numero_sorte)
-            VALUES ('${documento.id}', '${numeroSorte}')
-          `;
-          
-          console.log(`Inserindo número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
-          
-          const { error } = await adminClient.rpc('executar_query_admin', {
-            query_sql: sqlInsercao
-          });
-          
-          if (error) {
-            console.error(`Erro ao inserir número da sorte via SQL: ${error.message}`);
-            
-            // Tentar método alternativo
-            const { error: insertError } = await adminClient
-              .from('numeros_sorte_documento')
-              .insert([{
-                documento_id: documento.id,
-                numero_sorte: numeroSorte
-              }]);
-              
-            if (insertError) {
-              console.error(`Erro no método alternativo: ${insertError.message}`);
-            } else {
-              console.log(`Número da sorte inserido pelo método alternativo`);
-            }
-          } else {
-            console.log(`Número da sorte ${numeroSorte} inserido com sucesso`);
-          }
-        } catch (insertErr) {
-          console.error(`Erro ao processar número da sorte ${i+1}:`, insertErr);
-        }
-      }
-      
-      console.log(`${qtdNumeros} números da sorte gerados para o documento ${documento.id}`);
-      toast.success(`${qtdNumeros} números da sorte gerados para este documento`);
-    } catch (error) {
-      console.error('Erro ao gerar números da sorte:', error);
-      toast.error('Erro ao gerar números da sorte');
+    if (filtroCpfCnpj) {
+      filtrados = filtrados.filter(d => 
+        (d.usuarios?.cpf_cnpj || '').toLowerCase().includes(filtroCpfCnpj.toLowerCase()) ||
+        (d.cpf_cnpj || '').toLowerCase().includes(filtroCpfCnpj.toLowerCase())
+      );
     }
+    
+    if (filtroTipoDocumento) {
+      filtrados = filtrados.filter(d => 
+        (d.tipo || '').toLowerCase().includes(filtroTipoDocumento.toLowerCase())
+      );
+    }
+    
+    if (filtroStatus) {
+      filtrados = filtrados.filter(d => d.status === filtroStatus);
+    }
+    
+    return filtrados;
+  };
+  
+  // Função para atualizar os contadores
+  const atualizarContadores = (docs: DocumentoComUsuario[]) => {
+    const validados = docs.filter(d => d.status === 'VALIDADO').length;
+    const aguardando = docs.filter(d => d.status === 'AGUARDANDO VALIDAÇÃO').length;
+    const invalidados = docs.filter(d => d.status === 'INVÁLIDO').length;
+    
+    setTotalValidados(validados);
+    setTotalAguardandoValidacao(aguardando);
+    setTotalInvalidados(invalidados);
   };
   
   // Função auxiliar para formatação de valores monetários em reais
@@ -660,31 +622,53 @@ export default function DocumentosAdmin() {
   // Visualizar documento
   const visualizarDocumento = async (id: string, documento: DocumentoComUsuario) => {
     try {
-      // Determinar qual URL usar com base no tipo de documento
-      let urlParaAbrir = '';
-      
-      // Usar string em vez de enum para compatibilidade com o tipo
-      if (documento.tipo && documento.tipo.includes('CUPOM') && documento.numero_documento) {
-        // Para cupom fiscal, usar o número do documento como link
-        urlParaAbrir = documento.numero_documento;
-        
-        // Verificar se o número do documento já é uma URL válida
-        if (!urlParaAbrir.startsWith('http://') && !urlParaAbrir.startsWith('https://')) {
-          urlParaAbrir = `https://${urlParaAbrir}`;
-        }
-      } else if (documento.url_documento) {
-        // Para outros tipos, usar a URL do documento
-        urlParaAbrir = documento.url_documento;
-      } else if (documento.arquivo_url) {
-        // Alternativa se houver arquivo_url
-        urlParaAbrir = documento.arquivo_url;
-      } else {
-        toast.error('Nenhuma URL ou arquivo disponível para este documento');
+      if (!documento) {
+        toast.error('Documento não encontrado');
         return;
       }
       
-      console.log(`Abrindo documento: ${urlParaAbrir}`);
-      window.open(urlParaAbrir, '_blank');
+      // Determinar qual URL usar com base no tipo de documento
+      let urlParaAbrir = '';
+      
+      if (documento.tipo && documento.tipo.toUpperCase().includes('CUPOM')) {
+        // Para cupom fiscal, usar o número do documento como link
+        if (documento.numero_documento) {
+          urlParaAbrir = documento.numero_documento;
+          
+          // Verificar se o link do CUPOM FISCAL já é uma URL válida
+          if (!urlParaAbrir.startsWith('http://') && !urlParaAbrir.startsWith('https://')) {
+            // Adicionar https:// apenas se parecer uma URL sem protocolo
+            if (urlParaAbrir.includes('.') || urlParaAbrir.includes('/')) {
+              urlParaAbrir = `https://${urlParaAbrir}`;
+            }
+          }
+          
+          console.log(`Abrindo cupom fiscal com link: ${urlParaAbrir}`);
+        } else {
+          toast.error('Link do cupom fiscal não encontrado');
+          return;
+        }
+      } else {
+        // Para outros tipos (NOTA DE SERVIÇO, IMPOSTO, etc.), usar arquivo_url
+        if (documento.arquivo_url) {
+          urlParaAbrir = documento.arquivo_url;
+          console.log(`Abrindo arquivo de documento: ${urlParaAbrir}`);
+        } else if (documento.url_documento) {
+          // Fallback para url_documento
+          urlParaAbrir = documento.url_documento;
+          console.log(`Abrindo URL alternativa de documento: ${urlParaAbrir}`);
+        } else {
+          toast.error('Nenhum arquivo disponível para este documento');
+          return;
+        }
+      }
+      
+      // Abrir URL em uma nova aba
+      if (urlParaAbrir) {
+        window.open(urlParaAbrir, '_blank', 'noopener,noreferrer');
+      } else {
+        toast.error('URL inválida para visualização do documento');
+      }
     } catch (error) {
       console.error('Erro ao visualizar documento:', error);
       toast.error('Erro ao abrir documento');
