@@ -60,7 +60,21 @@ type DocumentoComUsuario = Documento & {
     nome_completo: string;
     email: string;
     cpf_cnpj: string;
-  }
+  };
+  
+  // Propriedades adicionais que podem estar presentes no documento
+  contribuinte?: string;
+  cpf_cnpj?: string;
+  url_documento?: string;
+  arquivo_url?: string;
+  numero_documento?: string;
+  chave_acesso?: string;
+  identificador?: string;
+  descricao?: string;
+  tipo?: string;
+  valor?: string | number;
+  status?: string;
+  data_validacao?: string | null;
 };
 
 /**
@@ -125,7 +139,7 @@ export default function DocumentosAdmin() {
       if (isUpdate) {
         try {
           // Usando chamada RPC para executar update
-          const { error } = await adminClient.rpc('executar_query_admin', {
+          const { data, error } = await adminClient.rpc('executar_query_admin', {
             query_sql: query
           });
           
@@ -144,18 +158,19 @@ export default function DocumentosAdmin() {
       
       // Para operações SELECT, queremos os resultados
       try {
-        const { data, error } = await adminClient
-          .from('_resultados_query_admin')
-          .select('*');
+        // Usando chamada RPC para executar select
+        const { data, error } = await adminClient.rpc('executar_query_select_admin', {
+          query_sql: query
+        });
         
         if (error) {
-          console.error('Erro ao executar query SELECT via views protegidas:', error);
+          console.error('Erro ao executar query SELECT via RPC:', error);
           return null;
         }
         
         return data;
       } catch (selectError) {
-        console.error('Exceção ao executar query SELECT via views protegidas:', selectError);
+        console.error('Exceção ao executar query SELECT via RPC:', selectError);
         return null;
       }
     } catch (error) {
@@ -180,47 +195,49 @@ export default function DocumentosAdmin() {
       // Criar cliente admin para ignorar RLS
       const adminClient = await criarClienteAdmin();
       
-      // Tentar carregar documentos com informações do usuário associado
-      const { data: documentosData, error: documentosError } = await adminClient
-        .from('documentos')
-        .select(`
-          *,
-          usuarios (
-            nome_completo,
-            email,
-            cpf_cnpj
-          )
-        `)
-        .order('created_at', { ascending: false });
-        
-      if (documentosError) {
-        console.error('Erro ao carregar documentos:', documentosError);
-        toast.error('Erro ao carregar dados de documentos');
-      }
+      // Usar SQL direto para carregar documentos com informações de usuário
+      const querySelect = `
+        SELECT d.*, 
+               u.nome_completo, u.email, u.cpf_cnpj as usuario_cpf_cnpj
+        FROM documentos d
+        LEFT JOIN usuarios u ON d.usuario_id = u.id
+        ORDER BY d.created_at DESC
+      `;
       
-      // Processar dados recebidos
+      const documentosData = await executarQueryDireta(adminClient, querySelect);
+        
       if (documentosData && documentosData.length > 0) {
-        setDocumentos(documentosData);
-        setDocumentosFiltrados(documentosData);
-        setTotalDocumentos(documentosData.length);
+        // Transformar os dados para compatibilidade com o tipo DocumentoComUsuario
+        const docsFormatados = documentosData.map((doc: any) => ({
+          ...doc,
+          usuarios: {
+            nome_completo: doc.nome_completo,
+            email: doc.email,
+            cpf_cnpj: doc.usuario_cpf_cnpj
+          }
+        }));
+        
+        setDocumentos(docsFormatados);
+        setDocumentosFiltrados(docsFormatados);
+        setTotalDocumentos(docsFormatados.length);
         
         // Calcular total por status
-        const validados = documentosData.filter(d => d.status === 'VALIDADO');
-        const aguardando = documentosData.filter(d => d.status === 'AGUARDANDO VALIDAÇÃO');
-        const invalidados = documentosData.filter(d => d.status === 'INVÁLIDO');
+        const validados = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'VALIDADO');
+        const aguardando = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'AGUARDANDO VALIDAÇÃO');
+        const invalidados = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'INVÁLIDO');
         
         setTotalValidados(validados.length);
         setTotalAguardandoValidacao(aguardando.length);
         setTotalInvalidados(invalidados.length);
         
         // Calcular valor total dos documentos
-        const valorTotal = documentosData.reduce((acc, doc) => {
-          const valor = parseFloat(doc.valor || '0');
+        const valorTotal = docsFormatados.reduce((acc: number, doc: DocumentoComUsuario) => {
+          const valor = parseFloat(doc.valor?.toString() || '0');
           return acc + (isNaN(valor) ? 0 : valor);
         }, 0);
         setValorTotalDocumentos(valorTotal);
         
-        toast.success(`${documentosData.length} documentos carregados com sucesso`);
+        toast.success(`${docsFormatados.length} documentos carregados com sucesso`);
       } else {
         console.warn('Nenhum documento encontrado ou retornado');
         toast.error('Nenhum documento encontrado');
@@ -277,6 +294,44 @@ export default function DocumentosAdmin() {
     setFiltroStatus('');
   };
   
+  // Função para buscar faixas de número da sorte de forma mais precisa
+  const buscarFaixaNumeroSorte = async (adminClient: any, valor: number) => {
+    try {
+      console.log(`Buscando faixa para valor: ${valor}`);
+      
+      // Consulta SQL direta para encontrar a faixa correta
+      const consulta = `
+        SELECT * FROM faixas_numero_sorte 
+        WHERE ${valor} >= valor_de AND ${valor} <= valor_ate 
+        ORDER BY valor_de ASC
+      `;
+      
+      console.log("Consulta de faixas:", consulta);
+      const resultado = await executarQueryDireta(adminClient, consulta);
+      
+      if (resultado && resultado.length > 0) {
+        console.log(`Faixa encontrada:`, resultado[0]);
+        return resultado[0];
+      }
+      
+      // Se não encontrou, buscar a primeira faixa como fallback
+      const consultaDefault = `
+        SELECT * FROM faixas_numero_sorte ORDER BY valor_de ASC LIMIT 1
+      `;
+      const resultadoDefault = await executarQueryDireta(adminClient, consultaDefault);
+      
+      if (resultadoDefault && resultadoDefault.length > 0) {
+        console.log(`Usando faixa padrão:`, resultadoDefault[0]);
+        return resultadoDefault[0];
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar faixa:', error);
+      return null;
+    }
+  };
+  
   // Atualizar status de documento
   const atualizarStatusDocumento = async (id: string, status: 'VALIDADO' | 'INVÁLIDO' | 'AGUARDANDO VALIDAÇÃO') => {
     try {
@@ -291,17 +346,37 @@ export default function DocumentosAdmin() {
       // Criar cliente admin para ignorar RLS
       const adminClient = await criarClienteAdmin();
       
-      // Usar executarQueryDireta em vez da API direta do Supabase
-      const query = `
+      // Se estiver INVALIDANDO um documento que estava VALIDADO, 
+      // precisamos primeiro excluir os números da sorte
+      if (status === 'INVÁLIDO' && statusAnterior === 'VALIDADO') {
+        console.log(`Excluindo números da sorte do documento ${id}`);
+        
+        const queryDeleteNumeros = `
+          DELETE FROM numeros_sorte_documento 
+          WHERE documento_id = '${id}'
+        `;
+        
+        const resultado = await executarQueryDireta(adminClient, queryDeleteNumeros);
+        
+        if (!resultado) {
+          console.log('Aviso: Possível falha ao excluir números da sorte, continuando mesmo assim');
+          // Continuamos mesmo se falhar (pode não ter números para excluir)
+        } else {
+          console.log(`Números da sorte excluídos para o documento ${id}`);
+        }
+      }
+      
+      // Utilizar SQL direto para atualizar o status
+      const queryUpdate = `
         UPDATE documentos 
         SET status = '${status}', 
             data_validacao = ${status === 'VALIDADO' ? 'NOW()' : 'NULL'}
-        WHERE id = '${id}';
+        WHERE id = '${id}'
       `;
       
-      console.log("Executando query:", query);
+      console.log("Executando query de atualização:", queryUpdate);
       
-      const resultado = await executarQueryDireta(adminClient, query);
+      const resultado = await executarQueryDireta(adminClient, queryUpdate);
       
       if (!resultado) {
         console.error('Erro ao atualizar status do documento');
@@ -352,6 +427,9 @@ export default function DocumentosAdmin() {
       }
       
       toast.success(`Status do documento atualizado para ${status}`);
+      
+      // Recarregar os documentos após a atualização
+      await carregarDocumentos();
     } catch (error) {
       console.error('Erro ao atualizar status do documento:', error);
       toast.error('Erro ao atualizar status do documento');
@@ -371,53 +449,16 @@ export default function DocumentosAdmin() {
       const valorDocumento = parseFloat(documento.valor.toString());
       console.log(`Gerando números da sorte para documento com valor: R$ ${valorDocumento}`);
       
-      // 1. Buscar faixas usando SQL direto
-      console.log(`Buscando faixa para valor: ${valorDocumento}`);
-      const consultaFaixas = `
-        SELECT * FROM faixas_numero_sorte 
-        WHERE ${valorDocumento} >= valor_de AND ${valorDocumento} <= valor_ate 
-        ORDER BY valor_de ASC
-      `;
+      // Buscar a faixa correta para o valor do documento
+      const faixa = await buscarFaixaNumeroSorte(adminClient, valorDocumento);
       
-      console.log("Consulta de faixas:", consultaFaixas);
-      const faixas = await executarQueryDireta(adminClient, consultaFaixas);
-      
-      console.log(`Resultado da consulta de faixas:`, faixas);
-      
-      // Se a consulta anterior não encontrou faixas, obter todas as faixas
-      let qtdNumeros = 1; // Valor padrão
-      
-      if (!faixas || faixas.length === 0) {
-        console.log('Primeira consulta não encontrou faixas. Buscando todas as faixas...');
-        
-        const consultaTodasFaixas = `
-          SELECT * FROM faixas_numero_sorte 
-          ORDER BY valor_de ASC
-        `;
-        
-        const todasFaixas = await executarQueryDireta(adminClient, consultaTodasFaixas);
-        console.log('Todas as faixas:', todasFaixas);
-        
-        if (todasFaixas && todasFaixas.length > 0) {
-          // Encontrar a faixa correta manualmente
-          const faixaCorreta = todasFaixas.find(
-            (faixa: any) => valorDocumento >= faixa.valor_de && valorDocumento <= faixa.valor_ate
-          );
-          
-          console.log('Faixa encontrada:', faixaCorreta);
-          
-          if (faixaCorreta) {
-            qtdNumeros = faixaCorreta.quantidade_numeros;
-          } else {
-            // Se ainda não encontrou, usar a primeira faixa
-            console.log('Usando primeira faixa como fallback');
-            qtdNumeros = todasFaixas[0].quantidade_numeros;
-          }
-        }
-      } else {
-        qtdNumeros = faixas[0].quantidade_numeros;
+      if (!faixa) {
+        console.error('Nenhuma faixa de valor encontrada para a geração de números da sorte');
+        toast.error('Erro ao determinar a quantidade de números da sorte');
+        return;
       }
       
+      const qtdNumeros = faixa.quantidade_numeros || 1;
       console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
       
       // 3. Gerar e inserir os números da sorte usando SQL direto
@@ -445,6 +486,7 @@ export default function DocumentosAdmin() {
       toast.success(`${qtdNumeros} números da sorte gerados para este documento`);
     } catch (error) {
       console.error('Erro ao gerar números da sorte:', error);
+      toast.error('Erro ao gerar números da sorte');
     }
   };
   
@@ -475,15 +517,33 @@ export default function DocumentosAdmin() {
   };
   
   // Visualizar documento
-  const visualizarDocumento = async (id: string, url: string) => {
+  const visualizarDocumento = async (id: string, documento: DocumentoComUsuario) => {
     try {
-      if (!url) {
-        toast.error('URL do documento não disponível');
+      // Determinar qual URL usar com base no tipo de documento
+      let urlParaAbrir = '';
+      
+      // Usar string em vez de enum para compatibilidade com o tipo
+      if (documento.tipo && documento.tipo.includes('CUPOM') && documento.numero_documento) {
+        // Para cupom fiscal, usar o número do documento como link
+        urlParaAbrir = documento.numero_documento;
+        
+        // Verificar se o número do documento já é uma URL válida
+        if (!urlParaAbrir.startsWith('http://') && !urlParaAbrir.startsWith('https://')) {
+          urlParaAbrir = `https://${urlParaAbrir}`;
+        }
+      } else if (documento.url_documento) {
+        // Para outros tipos, usar a URL do documento
+        urlParaAbrir = documento.url_documento;
+      } else if (documento.arquivo_url) {
+        // Alternativa se houver arquivo_url
+        urlParaAbrir = documento.arquivo_url;
+      } else {
+        toast.error('Nenhuma URL ou arquivo disponível para este documento');
         return;
       }
       
-      // Abrir o documento em uma nova janela
-      window.open(url, '_blank');
+      console.log(`Abrindo documento: ${urlParaAbrir}`);
+      window.open(urlParaAbrir, '_blank');
     } catch (error) {
       console.error('Erro ao visualizar documento:', error);
       toast.error('Erro ao abrir documento');
@@ -709,8 +769,8 @@ export default function DocumentosAdmin() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex space-x-2">
                             <button
-                              onClick={() => visualizarDocumento(documento.id, documento.url_documento || '')}
-                              disabled={!documento.url_documento || operacaoEmAndamento}
+                              onClick={() => visualizarDocumento(documento.id, documento)}
+                              disabled={operacaoEmAndamento}
                               className="text-blue-600 hover:text-blue-900"
                               title="Visualizar documento"
                             >
