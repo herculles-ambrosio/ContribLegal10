@@ -281,12 +281,14 @@ export default function DocumentosAdmin() {
   const atualizarStatusDocumento = async (id: string, status: 'VALIDADO' | 'INVÁLIDO' | 'AGUARDANDO VALIDAÇÃO') => {
     try {
       setOperacaoEmAndamento(true);
+      console.log(`Atualizando status do documento ${id} para: ${status}`);
       
       const adminClient = await criarClienteAdmin();
       
       // Obter o status atual para atualização de contadores
       const documentoAtual = documentos.find(d => d.id === id);
       const statusAnterior = documentoAtual?.status;
+      console.log(`Status anterior: ${statusAnterior}`);
       
       // Atualizar o status do documento
       const { error } = await adminClient
@@ -302,6 +304,14 @@ export default function DocumentosAdmin() {
         toast.error('Erro ao atualizar status do documento');
         setOperacaoEmAndamento(false);
         return;
+      }
+      
+      console.log(`Status do documento atualizado para: ${status}`);
+      
+      // Se o status for alterado para VALIDADO, gerar números da sorte
+      if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
+        console.log(`Gerando números da sorte para o documento ${id}`);
+        await gerarNumerosDaSorte(adminClient, documentoAtual);
       }
       
       // Atualizar a lista local
@@ -334,7 +344,7 @@ export default function DocumentosAdmin() {
       } else if (status === 'AGUARDANDO VALIDAÇÃO') {
         setTotalAguardandoValidacao(prev => prev + 1);
       } else if (status === 'INVÁLIDO') {
-        setTotalInvalidados(prev => prev + 1);
+        setTotalInvalidados(prev => prev - 1);
       }
       
       toast.success(`Status do documento atualizado para ${status}`);
@@ -343,6 +353,99 @@ export default function DocumentosAdmin() {
       toast.error('Erro ao atualizar status do documento');
     } finally {
       setOperacaoEmAndamento(false);
+    }
+  };
+  
+  // Função para gerar números da sorte para documento validado
+  const gerarNumerosDaSorte = async (adminClient: any, documento: DocumentoComUsuario | undefined) => {
+    if (!documento || !documento.valor) {
+      console.error('Documento inválido ou sem valor para gerar números da sorte');
+      return;
+    }
+    
+    try {
+      const valorDocumento = parseFloat(documento.valor.toString());
+      console.log(`Gerando números da sorte para documento com valor: R$ ${valorDocumento}`);
+      
+      // 1. Determinar quantos números da sorte o documento deve receber com base no valor
+      console.log(`Buscando faixa para valor: ${valorDocumento}`);
+      const { data: faixasData, error: faixasError } = await adminClient
+        .from('faixas_numero_sorte')
+        .select('*')
+        .lte('valor_de', valorDocumento)
+        .gte('valor_ate', valorDocumento);
+      
+      if (faixasError) {
+        console.error('Erro ao consultar faixas de números da sorte:', faixasError);
+        return;
+      }
+      
+      console.log(`Resultado da consulta de faixas:`, faixasData);
+      
+      // Se a consulta anterior não encontrou faixas, tentar uma abordagem diferente
+      let qtdNumeros = 1; // Valor padrão
+      
+      if (!faixasData || faixasData.length === 0) {
+        console.log('Primeira consulta não encontrou faixas. Buscando todas as faixas...');
+        // Buscar todas as faixas e filtrar manualmente
+        const { data: todasFaixas } = await adminClient
+          .from('faixas_numero_sorte')
+          .select('*')
+          .order('valor_de', { ascending: true });
+        
+        console.log('Todas as faixas:', todasFaixas);
+        
+        if (todasFaixas && todasFaixas.length > 0) {
+          // Encontrar a faixa correta
+          const faixaCorreta = todasFaixas.find(
+            (faixa: any) => valorDocumento >= faixa.valor_de && valorDocumento <= faixa.valor_ate
+          );
+          
+          console.log('Faixa encontrada:', faixaCorreta);
+          
+          if (faixaCorreta) {
+            qtdNumeros = faixaCorreta.quantidade_numeros;
+          } else {
+            // Se ainda não encontrou, usar a primeira faixa
+            console.log('Usando primeira faixa como fallback');
+            qtdNumeros = todasFaixas[0].quantidade_numeros;
+          }
+        }
+      } else {
+        qtdNumeros = faixasData[0].quantidade_numeros;
+      }
+      
+      console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
+      
+      // 3. Gerar e inserir os números da sorte
+      let numerosGerados = [];
+      
+      for (let i = 0; i < qtdNumeros; i++) {
+        // Gerar número aleatório (9 dígitos)
+        const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+        numerosGerados.push({
+          documento_id: documento.id,
+          numero_sorte: numeroSorte
+        });
+      }
+      
+      console.log(`Números gerados:`, numerosGerados);
+      
+      // 4. Inserir os números na tabela
+      console.log('Inserindo números na tabela numeros_sorte_documento...');
+      const { error: insertError } = await adminClient
+        .from('numeros_sorte_documento')
+        .insert(numerosGerados);
+      
+      if (insertError) {
+        console.error('Erro ao inserir números da sorte:', insertError);
+        return;
+      }
+      
+      console.log(`${qtdNumeros} números da sorte gerados para o documento ${documento.id}`);
+      toast.success(`${qtdNumeros} números da sorte gerados para este documento`);
+    } catch (error) {
+      console.error('Erro ao gerar números da sorte:', error);
     }
   };
   
