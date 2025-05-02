@@ -283,24 +283,28 @@ export default function DocumentosAdmin() {
       setOperacaoEmAndamento(true);
       console.log(`Atualizando status do documento ${id} para: ${status}`);
       
-      const adminClient = await criarClienteAdmin();
-      
       // Obter o status atual para atualização de contadores
       const documentoAtual = documentos.find(d => d.id === id);
       const statusAnterior = documentoAtual?.status;
       console.log(`Status anterior: ${statusAnterior}`);
       
-      // Atualizar o status do documento
-      const { error } = await adminClient
-        .from('documentos')
-        .update({ 
-          status,
-          data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-        })
-        .eq('id', id);
-        
-      if (error) {
-        console.error('Erro ao atualizar status do documento:', error);
+      // Criar cliente admin para ignorar RLS
+      const adminClient = await criarClienteAdmin();
+      
+      // Usar executarQueryDireta em vez da API direta do Supabase
+      const query = `
+        UPDATE documentos 
+        SET status = '${status}', 
+            data_validacao = ${status === 'VALIDADO' ? 'NOW()' : 'NULL'}
+        WHERE id = '${id}';
+      `;
+      
+      console.log("Executando query:", query);
+      
+      const resultado = await executarQueryDireta(adminClient, query);
+      
+      if (!resultado) {
+        console.error('Erro ao atualizar status do documento');
         toast.error('Erro ao atualizar status do documento');
         setOperacaoEmAndamento(false);
         return;
@@ -344,7 +348,7 @@ export default function DocumentosAdmin() {
       } else if (status === 'AGUARDANDO VALIDAÇÃO') {
         setTotalAguardandoValidacao(prev => prev + 1);
       } else if (status === 'INVÁLIDO') {
-        setTotalInvalidados(prev => prev - 1);
+        setTotalInvalidados(prev => prev + 1);
       }
       
       toast.success(`Status do documento atualizado para ${status}`);
@@ -367,36 +371,35 @@ export default function DocumentosAdmin() {
       const valorDocumento = parseFloat(documento.valor.toString());
       console.log(`Gerando números da sorte para documento com valor: R$ ${valorDocumento}`);
       
-      // 1. Determinar quantos números da sorte o documento deve receber com base no valor
+      // 1. Buscar faixas usando SQL direto
       console.log(`Buscando faixa para valor: ${valorDocumento}`);
-      const { data: faixasData, error: faixasError } = await adminClient
-        .from('faixas_numero_sorte')
-        .select('*')
-        .lte('valor_de', valorDocumento)
-        .gte('valor_ate', valorDocumento);
+      const consultaFaixas = `
+        SELECT * FROM faixas_numero_sorte 
+        WHERE ${valorDocumento} >= valor_de AND ${valorDocumento} <= valor_ate 
+        ORDER BY valor_de ASC
+      `;
       
-      if (faixasError) {
-        console.error('Erro ao consultar faixas de números da sorte:', faixasError);
-        return;
-      }
+      console.log("Consulta de faixas:", consultaFaixas);
+      const faixas = await executarQueryDireta(adminClient, consultaFaixas);
       
-      console.log(`Resultado da consulta de faixas:`, faixasData);
+      console.log(`Resultado da consulta de faixas:`, faixas);
       
-      // Se a consulta anterior não encontrou faixas, tentar uma abordagem diferente
+      // Se a consulta anterior não encontrou faixas, obter todas as faixas
       let qtdNumeros = 1; // Valor padrão
       
-      if (!faixasData || faixasData.length === 0) {
+      if (!faixas || faixas.length === 0) {
         console.log('Primeira consulta não encontrou faixas. Buscando todas as faixas...');
-        // Buscar todas as faixas e filtrar manualmente
-        const { data: todasFaixas } = await adminClient
-          .from('faixas_numero_sorte')
-          .select('*')
-          .order('valor_de', { ascending: true });
         
+        const consultaTodasFaixas = `
+          SELECT * FROM faixas_numero_sorte 
+          ORDER BY valor_de ASC
+        `;
+        
+        const todasFaixas = await executarQueryDireta(adminClient, consultaTodasFaixas);
         console.log('Todas as faixas:', todasFaixas);
         
         if (todasFaixas && todasFaixas.length > 0) {
-          // Encontrar a faixa correta
+          // Encontrar a faixa correta manualmente
           const faixaCorreta = todasFaixas.find(
             (faixa: any) => valorDocumento >= faixa.valor_de && valorDocumento <= faixa.valor_ate
           );
@@ -412,34 +415,30 @@ export default function DocumentosAdmin() {
           }
         }
       } else {
-        qtdNumeros = faixasData[0].quantidade_numeros;
+        qtdNumeros = faixas[0].quantidade_numeros;
       }
       
       console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
       
-      // 3. Gerar e inserir os números da sorte
-      let numerosGerados = [];
+      // 3. Gerar e inserir os números da sorte usando SQL direto
+      console.log(`Gerando ${qtdNumeros} números para o documento ${documento.id}`);
       
+      // Para cada número a ser gerado, criamos uma entrada na tabela
       for (let i = 0; i < qtdNumeros; i++) {
         // Gerar número aleatório (9 dígitos)
         const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-        numerosGerados.push({
-          documento_id: documento.id,
-          numero_sorte: numeroSorte
-        });
-      }
-      
-      console.log(`Números gerados:`, numerosGerados);
-      
-      // 4. Inserir os números na tabela
-      console.log('Inserindo números na tabela numeros_sorte_documento...');
-      const { error: insertError } = await adminClient
-        .from('numeros_sorte_documento')
-        .insert(numerosGerados);
-      
-      if (insertError) {
-        console.error('Erro ao inserir números da sorte:', insertError);
-        return;
+        
+        const sqlInsercao = `
+          INSERT INTO numeros_sorte_documento (documento_id, numero_sorte)
+          VALUES ('${documento.id}', '${numeroSorte}')
+        `;
+        
+        console.log(`Inserindo número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
+        const resultadoInsercao = await executarQueryDireta(adminClient, sqlInsercao);
+        
+        if (!resultadoInsercao) {
+          console.error(`Erro ao inserir o número da sorte ${numeroSorte}`);
+        }
       }
       
       console.log(`${qtdNumeros} números da sorte gerados para o documento ${documento.id}`);
