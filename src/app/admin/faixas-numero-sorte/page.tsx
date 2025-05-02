@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaPlus, FaEdit, FaTrash, FaSave, FaTimes } from 'react-icons/fa';
-import Layout from '@/components/Layout';
+import AdminLayout from '@/components/AdminLayout';
 import { getUsuarioLogado } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
@@ -275,218 +275,214 @@ export default function AdminFaixasNumeroSorte() {
   };
 
   return (
-    <Layout isAuthenticated>
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-blue-700 dark:text-blue-400">
-              Gerenciamento de Faixas de Números da Sorte
-            </h1>
-            <div className="flex gap-4">
-              <button 
-                onClick={() => router.push('/admin')}
-                className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-              >
-                Voltar para o Painel
-              </button>
-              <button 
+    <AdminLayout>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800 mb-4">Faixas de Números da Sorte</h1>
+        
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+            <h2 className="text-lg font-semibold">Configuração das Faixas</h2>
+            {!isAdding && !editingFaixaId && (
+              <button
                 onClick={handleAddNew}
-                disabled={isAdding || editingFaixaId !== null}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
+                disabled={isLoading}
               >
-                <FaPlus /> Nova Faixa
+                <FaPlus className="mr-2" /> Nova Faixa
               </button>
-            </div>
+            )}
           </div>
           
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <thead>
-                  <tr className="bg-gray-100 dark:bg-gray-700 text-left">
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Descrição</th>
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Valor De (R$)</th>
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Valor Até (R$)</th>
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Qtd. Números Sorte</th>
-                    <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isAdding && (
-                    <tr className="bg-blue-50 dark:bg-blue-900/20">
-                      <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <input 
-                          type="text" 
-                          name="descricao" 
-                          value={formData.descricao} 
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                          placeholder="Descrição da faixa"
-                        />
-                      </td>
-                      <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <input 
-                          type="text" 
-                          name="valor_de" 
-                          value={formData.valor_de} 
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                          placeholder="0,00"
-                        />
-                      </td>
-                      <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <input 
-                          type="text" 
-                          name="valor_ate" 
-                          value={formData.valor_ate} 
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                          placeholder="0,00"
-                        />
-                      </td>
-                      <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <input 
-                          type="number" 
-                          name="quantidade_numeros" 
-                          value={formData.quantidade_numeros} 
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                          min="1"
-                        />
-                      </td>
-                      <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex space-x-2">
-                          <button 
-                            onClick={handleSave}
-                            className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
-                          >
-                            <FaSave className="w-5 h-5" />
-                          </button>
-                          <button 
-                            onClick={handleCancelEdit}
-                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                          >
-                            <FaTimes className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </td>
+            <div className="p-4">
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <thead>
+                    <tr className="bg-gray-100 dark:bg-gray-700 text-left">
+                      <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Descrição</th>
+                      <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Valor De (R$)</th>
+                      <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Valor Até (R$)</th>
+                      <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Qtd. Números Sorte</th>
+                      <th className="px-6 py-3 border-b border-gray-200 dark:border-gray-600">Ações</th>
                     </tr>
-                  )}
-                  
-                  {faixas.map((faixa) => (
-                    <tr 
-                      key={faixa.id} 
-                      className={editingFaixaId === faixa.id 
-                        ? "bg-blue-50 dark:bg-blue-900/20" 
-                        : "hover:bg-gray-50 dark:hover:bg-gray-700"
-                      }
-                    >
-                      {editingFaixaId === faixa.id ? (
-                        <>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <input 
-                              type="text" 
-                              name="descricao" 
-                              value={formData.descricao} 
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                            />
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <input 
-                              type="text" 
-                              name="valor_de" 
-                              value={formData.valor_de} 
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                            />
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <input 
-                              type="text" 
-                              name="valor_ate" 
-                              value={formData.valor_ate} 
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                            />
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <input 
-                              type="number" 
-                              name="quantidade_numeros" 
-                              value={formData.quantidade_numeros} 
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
-                              min="1"
-                            />
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <div className="flex space-x-2">
-                              <button 
-                                onClick={handleSave}
-                                className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
-                              >
-                                <FaSave className="w-5 h-5" />
-                              </button>
-                              <button 
-                                onClick={handleCancelEdit}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                              >
-                                <FaTimes className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            {faixa.descricao}
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            R$ {formatarValor(faixa.valor_de)}
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            R$ {formatarValor(faixa.valor_ate)}
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            {faixa.quantidade_numeros}
-                          </td>
-                          <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <div className="flex space-x-2">
-                              <button 
-                                onClick={() => handleEdit(faixa)}
-                                disabled={isAdding || editingFaixaId !== null}
-                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <FaEdit className="w-5 h-5" />
-                              </button>
-                              <button 
-                                onClick={() => handleDelete(faixa.id)}
-                                disabled={isAdding || editingFaixaId !== null}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <FaTrash className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                  
-                  {faixas.length === 0 && !isAdding && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center border-b border-gray-200 dark:border-gray-700">
-                        Nenhuma faixa de números da sorte cadastrada.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {isAdding && (
+                      <tr className="bg-blue-50 dark:bg-blue-900/20">
+                        <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                          <input 
+                            type="text" 
+                            name="descricao" 
+                            value={formData.descricao} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                            placeholder="Descrição da faixa"
+                          />
+                        </td>
+                        <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                          <input 
+                            type="text" 
+                            name="valor_de" 
+                            value={formData.valor_de} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                            placeholder="0,00"
+                          />
+                        </td>
+                        <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                          <input 
+                            type="text" 
+                            name="valor_ate" 
+                            value={formData.valor_ate} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                            placeholder="0,00"
+                          />
+                        </td>
+                        <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                          <input 
+                            type="number" 
+                            name="quantidade_numeros" 
+                            value={formData.quantidade_numeros} 
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                            min="1"
+                          />
+                        </td>
+                        <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                          <div className="flex space-x-2">
+                            <button 
+                              onClick={handleSave}
+                              className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                            >
+                              <FaSave className="w-5 h-5" />
+                            </button>
+                            <button 
+                              onClick={handleCancelEdit}
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            >
+                              <FaTimes className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    
+                    {faixas.map((faixa) => (
+                      <tr 
+                        key={faixa.id} 
+                        className={editingFaixaId === faixa.id 
+                          ? "bg-blue-50 dark:bg-blue-900/20" 
+                          : "hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }
+                      >
+                        {editingFaixaId === faixa.id ? (
+                          <>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <input 
+                                type="text" 
+                                name="descricao" 
+                                value={formData.descricao} 
+                                onChange={handleChange}
+                                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                              />
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <input 
+                                type="text" 
+                                name="valor_de" 
+                                value={formData.valor_de} 
+                                onChange={handleChange}
+                                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                              />
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <input 
+                                type="text" 
+                                name="valor_ate" 
+                                value={formData.valor_ate} 
+                                onChange={handleChange}
+                                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                              />
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <input 
+                                type="number" 
+                                name="quantidade_numeros" 
+                                value={formData.quantidade_numeros} 
+                                onChange={handleChange}
+                                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                min="1"
+                              />
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <div className="flex space-x-2">
+                                <button 
+                                  onClick={handleSave}
+                                  className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                                >
+                                  <FaSave className="w-5 h-5" />
+                                </button>
+                                <button 
+                                  onClick={handleCancelEdit}
+                                  className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                >
+                                  <FaTimes className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              {faixa.descricao}
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              R$ {formatarValor(faixa.valor_de)}
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              R$ {formatarValor(faixa.valor_ate)}
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              {faixa.quantidade_numeros}
+                            </td>
+                            <td className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <div className="flex space-x-2">
+                                <button 
+                                  onClick={() => handleEdit(faixa)}
+                                  disabled={isAdding || editingFaixaId !== null}
+                                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <FaEdit className="w-5 h-5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(faixa.id)}
+                                  disabled={isAdding || editingFaixaId !== null}
+                                  className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <FaTrash className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                    
+                    {faixas.length === 0 && !isAdding && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center border-b border-gray-200 dark:border-gray-700">
+                          Nenhuma faixa de números da sorte cadastrada.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
           
@@ -500,6 +496,6 @@ export default function AdminFaixasNumeroSorte() {
           </div>
         </div>
       </div>
-    </Layout>
+    </AdminLayout>
   );
 } 

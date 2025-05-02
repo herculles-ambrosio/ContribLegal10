@@ -100,8 +100,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     {
       title: 'Documentos',
       icon: FaClipboardList,
-      href: '/admin',
-      active: pathname === '/admin' || pathname === '/admin/',
+      href: '/admin/documentos',
+      active: pathname === '/admin/documentos' || pathname?.includes('/admin/documentos'),
     },
     {
       title: 'Números da Sorte',
@@ -204,10 +204,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         )}
       </header>
 
-      <div className="flex">
+      <div className="flex h-full">
         {/* Sidebar */}
         {isSidebarOpen && (
-          <aside className="w-64 bg-white shadow-lg fixed inset-y-0 left-0 z-20 transform transition-transform duration-300 md:translate-x-0 pt-16 md:relative md:pt-0">
+          <aside className="w-64 bg-white shadow-lg fixed inset-y-0 left-0 z-20 transform transition-transform duration-300 md:translate-x-0 pt-16 md:static md:pt-0">
             <div className="h-full overflow-y-auto">
               <nav className="px-4 py-4">
                 <ul className="space-y-1">
@@ -231,8 +231,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         )}
 
         {/* Main content */}
-        <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : ''}`}>
-          <div className="w-full max-w-full px-0 sm:px-2 py-4 overflow-x-hidden">
+        <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'md:ml-0' : 'w-full'}`}>
+          <div className="p-4 md:p-6 max-w-full overflow-hidden">
             {children}
           </div>
         </main>
