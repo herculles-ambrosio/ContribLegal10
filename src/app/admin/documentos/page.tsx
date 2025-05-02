@@ -156,21 +156,47 @@ export default function DocumentosAdmin() {
         }
       }
       
-      // Para operações SELECT, queremos os resultados
+      // Para operações SELECT, vamos tentar usar a API do Supabase diretamente
+      // em vez de depender da função RPC que está causando erros
       try {
-        // Usando chamada RPC para executar select
-        const { data, error } = await adminClient.rpc('executar_query_select_admin', {
-          query_sql: query
-        });
-        
-        if (error) {
-          console.error('Erro ao executar query SELECT via RPC:', error);
+        // Determinar tabela a consultar com base na query
+        if (query.toLowerCase().includes('from documentos')) {
+          const { data, error } = await adminClient
+            .from('documentos')
+            .select(`
+              *,
+              usuarios (
+                nome_completo,
+                email,
+                cpf_cnpj
+              )
+            `)
+            .order('created_at', { ascending: false });
+          
+          if (error) {
+            console.error('Erro ao consultar documentos via API:', error);
+            return null;
+          }
+          
+          return data;
+        } else if (query.toLowerCase().includes('from faixas_numero_sorte')) {
+          const { data, error } = await adminClient
+            .from('faixas_numero_sorte')
+            .select('*')
+            .order('valor_de', { ascending: true });
+          
+          if (error) {
+            console.error('Erro ao consultar faixas via API:', error);
+            return null;
+          }
+          
+          return data;
+        } else {
+          console.error('Tabela não suportada para consulta direta:', query);
           return null;
         }
-        
-        return data;
       } catch (selectError) {
-        console.error('Exceção ao executar query SELECT via RPC:', selectError);
+        console.error('Exceção ao executar consulta via API:', selectError);
         return null;
       }
     } catch (error) {
@@ -195,49 +221,49 @@ export default function DocumentosAdmin() {
       // Criar cliente admin para ignorar RLS
       const adminClient = await criarClienteAdmin();
       
-      // Usar SQL direto para carregar documentos com informações de usuário
-      const querySelect = `
-        SELECT d.*, 
-               u.nome_completo, u.email, u.cpf_cnpj as usuario_cpf_cnpj
-        FROM documentos d
-        LEFT JOIN usuarios u ON d.usuario_id = u.id
-        ORDER BY d.created_at DESC
-      `;
+      // Tentar carregar documentos diretamente com a API do Supabase
+      const { data: documentosData, error: documentosError } = await adminClient
+        .from('documentos')
+        .select(`
+          *,
+          usuarios (
+            nome_completo,
+            email,
+            cpf_cnpj
+          )
+        `)
+        .order('created_at', { ascending: false });
+        
+      if (documentosError) {
+        console.error('Erro ao carregar documentos:', documentosError);
+        toast.error('Erro ao carregar dados de documentos');
+        setIsLoading(false);
+        return;
+      }
       
-      const documentosData = await executarQueryDireta(adminClient, querySelect);
-        
+      // Processar dados recebidos
       if (documentosData && documentosData.length > 0) {
-        // Transformar os dados para compatibilidade com o tipo DocumentoComUsuario
-        const docsFormatados = documentosData.map((doc: any) => ({
-          ...doc,
-          usuarios: {
-            nome_completo: doc.nome_completo,
-            email: doc.email,
-            cpf_cnpj: doc.usuario_cpf_cnpj
-          }
-        }));
-        
-        setDocumentos(docsFormatados);
-        setDocumentosFiltrados(docsFormatados);
-        setTotalDocumentos(docsFormatados.length);
+        setDocumentos(documentosData);
+        setDocumentosFiltrados(documentosData);
+        setTotalDocumentos(documentosData.length);
         
         // Calcular total por status
-        const validados = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'VALIDADO');
-        const aguardando = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'AGUARDANDO VALIDAÇÃO');
-        const invalidados = docsFormatados.filter((d: DocumentoComUsuario) => d.status === 'INVÁLIDO');
+        const validados = documentosData.filter((d: DocumentoComUsuario) => d.status === 'VALIDADO');
+        const aguardando = documentosData.filter((d: DocumentoComUsuario) => d.status === 'AGUARDANDO VALIDAÇÃO');
+        const invalidados = documentosData.filter((d: DocumentoComUsuario) => d.status === 'INVÁLIDO');
         
         setTotalValidados(validados.length);
         setTotalAguardandoValidacao(aguardando.length);
         setTotalInvalidados(invalidados.length);
         
         // Calcular valor total dos documentos
-        const valorTotal = docsFormatados.reduce((acc: number, doc: DocumentoComUsuario) => {
+        const valorTotal = documentosData.reduce((acc: number, doc: DocumentoComUsuario) => {
           const valor = parseFloat(doc.valor?.toString() || '0');
           return acc + (isNaN(valor) ? 0 : valor);
         }, 0);
         setValorTotalDocumentos(valorTotal);
         
-        toast.success(`${docsFormatados.length} documentos carregados com sucesso`);
+        toast.success(`${documentosData.length} documentos carregados com sucesso`);
       } else {
         console.warn('Nenhum documento encontrado ou retornado');
         toast.error('Nenhum documento encontrado');
@@ -299,30 +325,40 @@ export default function DocumentosAdmin() {
     try {
       console.log(`Buscando faixa para valor: ${valor}`);
       
-      // Consulta SQL direta para encontrar a faixa correta
-      const consulta = `
-        SELECT * FROM faixas_numero_sorte 
-        WHERE ${valor} >= valor_de AND ${valor} <= valor_ate 
-        ORDER BY valor_de ASC
-      `;
+      // Consultar faixas diretamente com a API do Supabase
+      const { data, error } = await adminClient
+        .from('faixas_numero_sorte')
+        .select('*')
+        .lte('valor_ate', valor)
+        .gte('valor_de', valor)
+        .order('valor_de', { ascending: true })
+        .limit(1);
       
-      console.log("Consulta de faixas:", consulta);
-      const resultado = await executarQueryDireta(adminClient, consulta);
+      if (error) {
+        console.error('Erro ao buscar faixa via API:', error);
+        return null;
+      }
       
-      if (resultado && resultado.length > 0) {
-        console.log(`Faixa encontrada:`, resultado[0]);
-        return resultado[0];
+      if (data && data.length > 0) {
+        console.log(`Faixa encontrada:`, data[0]);
+        return data[0];
       }
       
       // Se não encontrou, buscar a primeira faixa como fallback
-      const consultaDefault = `
-        SELECT * FROM faixas_numero_sorte ORDER BY valor_de ASC LIMIT 1
-      `;
-      const resultadoDefault = await executarQueryDireta(adminClient, consultaDefault);
+      const { data: defaultData, error: defaultError } = await adminClient
+        .from('faixas_numero_sorte')
+        .select('*')
+        .order('valor_de', { ascending: true })
+        .limit(1);
       
-      if (resultadoDefault && resultadoDefault.length > 0) {
-        console.log(`Usando faixa padrão:`, resultadoDefault[0]);
-        return resultadoDefault[0];
+      if (defaultError) {
+        console.error('Erro ao buscar faixa padrão:', defaultError);
+        return null;
+      }
+      
+      if (defaultData && defaultData.length > 0) {
+        console.log(`Usando faixa padrão:`, defaultData[0]);
+        return defaultData[0];
       }
       
       return null;
@@ -351,35 +387,31 @@ export default function DocumentosAdmin() {
       if (status === 'INVÁLIDO' && statusAnterior === 'VALIDADO') {
         console.log(`Excluindo números da sorte do documento ${id}`);
         
-        const queryDeleteNumeros = `
-          DELETE FROM numeros_sorte_documento 
-          WHERE documento_id = '${id}'
-        `;
+        // Excluir números da sorte usando API direta
+        const { error: deleteError } = await adminClient
+          .from('numeros_sorte_documento')
+          .delete()
+          .eq('documento_id', id);
         
-        const resultado = await executarQueryDireta(adminClient, queryDeleteNumeros);
-        
-        if (!resultado) {
-          console.log('Aviso: Possível falha ao excluir números da sorte, continuando mesmo assim');
+        if (deleteError) {
+          console.log('Aviso: Possível falha ao excluir números da sorte:', deleteError);
           // Continuamos mesmo se falhar (pode não ter números para excluir)
         } else {
           console.log(`Números da sorte excluídos para o documento ${id}`);
         }
       }
       
-      // Utilizar SQL direto para atualizar o status
-      const queryUpdate = `
-        UPDATE documentos 
-        SET status = '${status}', 
-            data_validacao = ${status === 'VALIDADO' ? 'NOW()' : 'NULL'}
-        WHERE id = '${id}'
-      `;
+      // Atualizar o documento diretamente usando o cliente admin
+      const { error: updateError } = await adminClient
+        .from('documentos')
+        .update({ 
+          status: status,
+          data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
+        })
+        .eq('id', id);
       
-      console.log("Executando query de atualização:", queryUpdate);
-      
-      const resultado = await executarQueryDireta(adminClient, queryUpdate);
-      
-      if (!resultado) {
-        console.error('Erro ao atualizar status do documento');
+      if (updateError) {
+        console.error('Erro ao atualizar status do documento:', updateError);
         toast.error('Erro ao atualizar status do documento');
         setOperacaoEmAndamento(false);
         return;
@@ -461,7 +493,7 @@ export default function DocumentosAdmin() {
       const qtdNumeros = faixa.quantidade_numeros || 1;
       console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
       
-      // 3. Gerar e inserir os números da sorte usando SQL direto
+      // 3. Gerar e inserir os números da sorte usando API direta
       console.log(`Gerando ${qtdNumeros} números para o documento ${documento.id}`);
       
       // Para cada número a ser gerado, criamos uma entrada na tabela
@@ -469,16 +501,18 @@ export default function DocumentosAdmin() {
         // Gerar número aleatório (9 dígitos)
         const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
         
-        const sqlInsercao = `
-          INSERT INTO numeros_sorte_documento (documento_id, numero_sorte)
-          VALUES ('${documento.id}', '${numeroSorte}')
-        `;
+        // Inserir usando a API direta
+        const { error } = await adminClient
+          .from('numeros_sorte_documento')
+          .insert([{
+            documento_id: documento.id,
+            numero_sorte: numeroSorte
+          }]);
         
-        console.log(`Inserindo número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
-        const resultadoInsercao = await executarQueryDireta(adminClient, sqlInsercao);
-        
-        if (!resultadoInsercao) {
-          console.error(`Erro ao inserir o número da sorte ${numeroSorte}`);
+        if (error) {
+          console.error(`Erro ao inserir o número da sorte ${numeroSorte}:`, error);
+        } else {
+          console.log(`Inserido número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
         }
       }
       
