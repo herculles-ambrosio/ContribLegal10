@@ -387,81 +387,166 @@ export default function DocumentosAdmin() {
       if (status === 'INVÁLIDO' && statusAnterior === 'VALIDADO') {
         console.log(`Excluindo números da sorte do documento ${id}`);
         
-        // Excluir números da sorte usando API direta
-        const { error: deleteError } = await adminClient
-          .from('numeros_sorte_documento')
-          .delete()
-          .eq('documento_id', id);
-        
-        if (deleteError) {
-          console.log('Aviso: Possível falha ao excluir números da sorte:', deleteError);
-          // Continuamos mesmo se falhar (pode não ter números para excluir)
-        } else {
-          console.log(`Números da sorte excluídos para o documento ${id}`);
-        }
-      }
-      
-      // Atualizar o documento diretamente usando o cliente admin
-      const { error: updateError } = await adminClient
-        .from('documentos')
-        .update({ 
-          status: status,
-          data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-        })
-        .eq('id', id);
-      
-      if (updateError) {
-        console.error('Erro ao atualizar status do documento:', updateError);
-        toast.error('Erro ao atualizar status do documento');
-        setOperacaoEmAndamento(false);
-        return;
-      }
-      
-      console.log(`Status do documento atualizado para: ${status}`);
-      
-      // Se o status for alterado para VALIDADO, gerar números da sorte
-      if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
-        console.log(`Gerando números da sorte para o documento ${id}`);
-        await gerarNumerosDaSorte(adminClient, documentoAtual);
-      }
-      
-      // Atualizar a lista local
-      setDocumentos(prevState => 
-        prevState.map(doc => {
-          if (doc.id === id) {
-            return { 
-              ...doc, 
-              status,
-              data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
-            };
+        try {
+          // Excluir números da sorte usando API direta
+          const { error: deleteError } = await adminClient
+            .from('numeros_sorte_documento')
+            .delete()
+            .eq('documento_id', id);
+          
+          if (deleteError) {
+            console.log('Aviso: Possível falha ao excluir números da sorte:', deleteError);
+            // Continuamos mesmo se falhar (pode não ter números para excluir)
+          } else {
+            console.log(`Números da sorte excluídos para o documento ${id}`);
           }
-          return doc;
-        })
-      );
-      
-      // Atualizar contadores
-      if (statusAnterior) {
-        if (statusAnterior === 'VALIDADO') {
-          setTotalValidados(prev => prev - 1);
-        } else if (statusAnterior === 'AGUARDANDO VALIDAÇÃO') {
-          setTotalAguardandoValidacao(prev => prev - 1);
-        } else if (statusAnterior === 'INVÁLIDO') {
-          setTotalInvalidados(prev => prev - 1);
+        } catch (deleteErr) {
+          console.error('Erro ao excluir números da sorte:', deleteErr);
+          // Continuamos mesmo com erro
         }
       }
       
-      if (status === 'VALIDADO') {
-        setTotalValidados(prev => prev + 1);
-      } else if (status === 'AGUARDANDO VALIDAÇÃO') {
-        setTotalAguardandoValidacao(prev => prev + 1);
-      } else if (status === 'INVÁLIDO') {
-        setTotalInvalidados(prev => prev + 1);
+      // Volta para usar a query SQL direta, que é mais confiável nesse caso
+      try {
+        // Usar RPC para executar a atualização
+        const queryUpdate = `
+          UPDATE documentos 
+          SET status = '${status}', 
+              data_validacao = ${status === 'VALIDADO' ? 'NOW()' : 'NULL'}
+          WHERE id = '${id}'
+        `;
+        
+        console.log("Executando query de atualização:", queryUpdate);
+        
+        const { data, error } = await adminClient.rpc('executar_query_admin', {
+          query_sql: queryUpdate
+        });
+        
+        if (error) {
+          console.error('Erro ao atualizar status do documento via RPC:', error);
+          toast.error('Erro ao atualizar status do documento');
+          setOperacaoEmAndamento(false);
+          return;
+        }
+        
+        console.log(`Status do documento atualizado para: ${status}`);
+        
+        // Se o status for alterado para VALIDADO, gerar números da sorte
+        if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
+          console.log(`Gerando números da sorte para o documento ${id}`);
+          await gerarNumerosDaSorte(adminClient, documentoAtual);
+        }
+        
+        // Atualizar a lista local
+        setDocumentos(prevState => 
+          prevState.map(doc => {
+            if (doc.id === id) {
+              return { 
+                ...doc, 
+                status,
+                data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
+              };
+            }
+            return doc;
+          })
+        );
+        
+        // Atualizar contadores
+        if (statusAnterior) {
+          if (statusAnterior === 'VALIDADO') {
+            setTotalValidados(prev => prev - 1);
+          } else if (statusAnterior === 'AGUARDANDO VALIDAÇÃO') {
+            setTotalAguardandoValidacao(prev => prev - 1);
+          } else if (statusAnterior === 'INVÁLIDO') {
+            setTotalInvalidados(prev => prev - 1);
+          }
+        }
+        
+        if (status === 'VALIDADO') {
+          setTotalValidados(prev => prev + 1);
+        } else if (status === 'AGUARDANDO VALIDAÇÃO') {
+          setTotalAguardandoValidacao(prev => prev + 1);
+        } else if (status === 'INVÁLIDO') {
+          setTotalInvalidados(prev => prev + 1);
+        }
+        
+        toast.success(`Status do documento atualizado para ${status}`);
+        
+        // Recarregar os documentos após a atualização
+        await carregarDocumentos();
+      } catch (updateErr) {
+        console.error('Erro específico ao atualizar documento:', updateErr);
+        
+        // Tentar método alternativo com update via SQL direta (sem RPC)
+        try {
+          console.log("Tentando método alternativo de atualização via tabela");
+          
+          // Tenta atualizar diretamente o documento
+          const { error: fallbackError } = await adminClient
+            .from('documentos')
+            .update({
+              status: status,
+              data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
+            })
+            .eq('id', id);
+            
+          if (fallbackError) {
+            console.error("Erro no método alternativo:", fallbackError);
+            toast.error("Erro ao atualizar status do documento");
+            setOperacaoEmAndamento(false);
+            return;
+          }
+          
+          console.log("Atualização realizada com método alternativo");
+          
+          // Se o status for alterado para VALIDADO, gerar números da sorte
+          if (status === 'VALIDADO' && statusAnterior !== 'VALIDADO') {
+            console.log(`Gerando números da sorte para o documento ${id}`);
+            await gerarNumerosDaSorte(adminClient, documentoAtual);
+          }
+          
+          // Atualizar a lista local e contadores
+          setDocumentos(prevState => 
+            prevState.map(doc => {
+              if (doc.id === id) {
+                return { 
+                  ...doc, 
+                  status,
+                  data_validacao: status === 'VALIDADO' ? new Date().toISOString() : null
+                };
+              }
+              return doc;
+            })
+          );
+          
+          // Atualizar contadores
+          if (statusAnterior) {
+            if (statusAnterior === 'VALIDADO') {
+              setTotalValidados(prev => prev - 1);
+            } else if (statusAnterior === 'AGUARDANDO VALIDAÇÃO') {
+              setTotalAguardandoValidacao(prev => prev - 1);
+            } else if (statusAnterior === 'INVÁLIDO') {
+              setTotalInvalidados(prev => prev - 1);
+            }
+          }
+          
+          if (status === 'VALIDADO') {
+            setTotalValidados(prev => prev + 1);
+          } else if (status === 'AGUARDANDO VALIDAÇÃO') {
+            setTotalAguardandoValidacao(prev => prev + 1);
+          } else if (status === 'INVÁLIDO') {
+            setTotalInvalidados(prev => prev + 1);
+          }
+          
+          toast.success(`Status do documento atualizado para ${status}`);
+          
+          // Recarregar os documentos após a atualização
+          await carregarDocumentos();
+        } catch (finalError) {
+          console.error("Erro no método final de atualização:", finalError);
+          toast.error("Não foi possível atualizar o status do documento");
+        }
       }
-      
-      toast.success(`Status do documento atualizado para ${status}`);
-      
-      // Recarregar os documentos após a atualização
-      await carregarDocumentos();
     } catch (error) {
       console.error('Erro ao atualizar status do documento:', error);
       toast.error('Erro ao atualizar status do documento');
@@ -493,26 +578,48 @@ export default function DocumentosAdmin() {
       const qtdNumeros = faixa.quantidade_numeros || 1;
       console.log(`Quantidade de números a gerar: ${qtdNumeros}`);
       
-      // 3. Gerar e inserir os números da sorte usando API direta
+      // Gerar e inserir os números da sorte
       console.log(`Gerando ${qtdNumeros} números para o documento ${documento.id}`);
       
       // Para cada número a ser gerado, criamos uma entrada na tabela
       for (let i = 0; i < qtdNumeros; i++) {
-        // Gerar número aleatório (9 dígitos)
-        const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
-        
-        // Inserir usando a API direta
-        const { error } = await adminClient
-          .from('numeros_sorte_documento')
-          .insert([{
-            documento_id: documento.id,
-            numero_sorte: numeroSorte
-          }]);
-        
-        if (error) {
-          console.error(`Erro ao inserir o número da sorte ${numeroSorte}:`, error);
-        } else {
-          console.log(`Inserido número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
+        try {
+          // Gerar número aleatório (9 dígitos)
+          const numeroSorte = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+          
+          // Tentar o método SQL direto primeiro
+          const sqlInsercao = `
+            INSERT INTO numeros_sorte_documento (documento_id, numero_sorte)
+            VALUES ('${documento.id}', '${numeroSorte}')
+          `;
+          
+          console.log(`Inserindo número da sorte ${i+1}/${qtdNumeros}: ${numeroSorte}`);
+          
+          const { error } = await adminClient.rpc('executar_query_admin', {
+            query_sql: sqlInsercao
+          });
+          
+          if (error) {
+            console.error(`Erro ao inserir número da sorte via SQL: ${error.message}`);
+            
+            // Tentar método alternativo
+            const { error: insertError } = await adminClient
+              .from('numeros_sorte_documento')
+              .insert([{
+                documento_id: documento.id,
+                numero_sorte: numeroSorte
+              }]);
+              
+            if (insertError) {
+              console.error(`Erro no método alternativo: ${insertError.message}`);
+            } else {
+              console.log(`Número da sorte inserido pelo método alternativo`);
+            }
+          } else {
+            console.log(`Número da sorte ${numeroSorte} inserido com sucesso`);
+          }
+        } catch (insertErr) {
+          console.error(`Erro ao processar número da sorte ${i+1}:`, insertErr);
         }
       }
       
