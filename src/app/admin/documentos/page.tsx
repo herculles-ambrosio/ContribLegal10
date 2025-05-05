@@ -659,45 +659,99 @@ export default function DocumentosAdmin() {
             return;
           }
           
-          // Corrigir caminhos que possam conter URL completa 
-          let caminhoArquivo = documento.arquivo_url;
-          
-          // Se o caminho contiver a URL completa do Supabase, extrair apenas o caminho relativo
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-          if (supabaseUrl && caminhoArquivo.includes(supabaseUrl)) {
-            const regex = new RegExp(`.*?${supabaseUrl}/storage/v1/object/public/documentos/(.*)`, 'i');
-            const matches = caminhoArquivo.match(regex);
-            if (matches && matches[1]) {
-              caminhoArquivo = matches[1];
-              console.log(`Caminho extraído da URL completa: ${caminhoArquivo}`);
-            }
-          }
-          
           try {
-            // Gerar URL assinada para visualização do arquivo
-            const { data, error } = await supabase.storage
-              .from('documentos')
-              .createSignedUrl(caminhoArquivo, 60); // Validade de 60 segundos
+            // SOLUÇÃO ALTERNATIVA:
+            // Em vez de tentar criar URL assinada diretamente, primeiro verificamos se o 
+            // objeto existe, e se não existir, tentamos construir um URL público
             
-            if (error) {
-              console.error('Erro ao gerar URL assinada:', error);
-              console.error('Detalhes do erro:', JSON.stringify(error));
-              console.error('Caminho do arquivo tentado:', caminhoArquivo);
+            // Extrair o nome do arquivo do caminho completo
+            let caminhoArquivo = documento.arquivo_url;
+            
+            // Tentar extrair apenas o nome do arquivo se for um caminho completo
+            if (caminhoArquivo.includes('/')) {
+              const partesDoCaminho = caminhoArquivo.split('/');
+              const nomeArquivo = partesDoCaminho[partesDoCaminho.length - 1];
               
-              if (error.message?.includes('not found') || error.message?.includes('Object not found')) {
-                toast.error(`Arquivo não encontrado no armazenamento. ID do documento: ${id}`);
+              // Verificar se temos apenas o nome do arquivo ou se temos um subdiretório
+              // Se tivermos o ID do usuário (UUID) como parte do caminho, ele deve ser mantido
+              const possívelUsuarioId = partesDoCaminho.length > 1 ? partesDoCaminho[0] : null;
+              
+              if (possívelUsuarioId && possívelUsuarioId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                // Temos um UUID como primeira parte do caminho (provavelmente user_id)
+                caminhoArquivo = `${possívelUsuarioId}/${nomeArquivo}`;
               } else {
-                toast.error(`Erro ao gerar URL: ${error.message}`);
+                // Se não tivermos um UUID, tentar apenas com o nome do arquivo
+                caminhoArquivo = nomeArquivo;
               }
+              
+              console.log(`Caminho processado: ${caminhoArquivo}`);
+            }
+            
+            // Primeiro, tentar gerar uma URL pública para o arquivo (não requer autenticação)
+            const { data: publicUrlData } = supabase.storage
+              .from('documentos')
+              .getPublicUrl(caminhoArquivo);
+            
+            if (publicUrlData && publicUrlData.publicUrl) {
+              // Verificar se o arquivo existe fazendo uma requisição HEAD
+              try {
+                const resposta = await fetch(publicUrlData.publicUrl, { method: 'HEAD' });
+                if (resposta.ok) {
+                  // O arquivo existe! Podemos usar a URL pública
+                  urlParaAbrir = publicUrlData.publicUrl;
+                  console.log(`Usando URL pública: ${urlParaAbrir}`);
+                } else {
+                  // Arquivo não encontrado, tentar gerar URL assinada como fallback
+                  throw new Error('Arquivo não encontrado com URL pública');
+                }
+              } catch (fetchError) {
+                console.log('Erro ao verificar URL pública, tentando URL assinada', fetchError);
+                
+                // Tentar com URL assinada como fallback
+                const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+                  .from('documentos')
+                  .createSignedUrl(caminhoArquivo, 60);
+                
+                if (signedUrlError) {
+                  // Se ainda tivermos erro com o caminho atual, tentar outras alternativas:
+                  
+                  // 1. Tentar apenas com o nome do arquivo (sem subdiretórios)
+                  if (caminhoArquivo.includes('/')) {
+                    const nomeArquivoSimples = caminhoArquivo.split('/').pop() || '';
+                    console.log(`Tentando com nome de arquivo simples: ${nomeArquivoSimples}`);
+                    
+                    const { data: altData, error: altError } = await supabase.storage
+                      .from('documentos')
+                      .createSignedUrl(nomeArquivoSimples, 60);
+                    
+                    if (!altError && altData) {
+                      urlParaAbrir = altData.signedUrl;
+                      console.log(`URL assinada com nome simples: ${urlParaAbrir}`);
+                    } else {
+                      console.error('Erro ao gerar URL assinada alternativa:', altError);
+                      throw new Error(`Arquivo não encontrado no armazenamento: ${nomeArquivoSimples}`);
+                    }
+                  } else {
+                    console.error('Erro ao gerar URL assinada:', signedUrlError);
+                    throw new Error(`Arquivo não encontrado no armazenamento: ${caminhoArquivo}`);
+                  }
+                } else if (signedUrlData) {
+                  urlParaAbrir = signedUrlData.signedUrl;
+                  console.log(`URL assinada gerada: ${urlParaAbrir}`);
+                }
+              }
+            }
+          } catch (storageError) {
+            console.error('Erro ao processar arquivo:', storageError);
+            
+            // Se tudo falhar, tentar url_documento como última alternativa
+            if (documento.url_documento) {
+              console.log('Usando url_documento como alternativa');
+              urlParaAbrir = documento.url_documento;
+            } else {
+              toast.error(`Não foi possível localizar o arquivo. ID do documento: ${id}`);
               return;
             }
-            
-            urlParaAbrir = data.signedUrl;
-            console.log(`Abrindo arquivo de documento via URL assinada: ${urlParaAbrir}`);
-          } catch (storageError) {
-            console.error('Exceção ao processar arquivo de armazenamento:', storageError);
-            toast.error('Falha ao processar arquivo no armazenamento');
-            return;
           }
         } else if (documento.url_documento) {
           // Fallback para url_documento
@@ -719,8 +773,10 @@ export default function DocumentosAdmin() {
       console.error('Erro ao visualizar documento:', error);
       if (error instanceof Error) {
         console.error('Detalhes do erro:', error.message, error.stack);
+        toast.error(`Erro: ${error.message}`);
+      } else {
+        toast.error('Erro ao abrir documento. Verifique o console para detalhes.');
       }
-      toast.error('Erro ao abrir documento. Verifique o console para detalhes.');
     }
   };
   
