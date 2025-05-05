@@ -324,7 +324,6 @@ export default function MeusDocumentos() {
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">{getTipoDocumentoLabel(documento.tipo)}</div>
-                            <div className="text-sm text-gray-500">#{documento.numero_documento}</div>
                           </div>
                         </div>
                       </td>
@@ -400,7 +399,7 @@ export default function MeusDocumentos() {
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-screen flex flex-col">
               <div className="p-4 border-b border-gray-200 flex justify-between items-center">
                 <h2 className="text-xl font-semibold">
-                  {getTipoDocumentoLabel(documentoSelecionado.tipo)} - {documentoSelecionado.numero_documento}
+                  {getTipoDocumentoLabel(documentoSelecionado.tipo)}
                 </h2>
                 <button
                   onClick={fecharModal}
