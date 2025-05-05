@@ -651,19 +651,54 @@ export default function DocumentosAdmin() {
       } else {
         // Para outros tipos (NOTA DE SERVIÇO, IMPOSTO, etc.), usar arquivo_url
         if (documento.arquivo_url) {
-          // Gerar URL assinada para visualização do arquivo
-          const { data, error } = await supabase.storage
-            .from('documentos')
-            .createSignedUrl(documento.arquivo_url, 60); // Validade de 60 segundos
+          console.log(`Tentando acessar arquivo: ${documento.arquivo_url}`);
           
-          if (error) {
-            console.error('Erro ao gerar URL assinada:', error);
-            toast.error('Erro ao gerar URL para visualização');
+          // Verificar se o arquivo_url está em um formato válido
+          if (!documento.arquivo_url.trim()) {
+            toast.error('Caminho do arquivo vazio ou inválido');
             return;
           }
           
-          urlParaAbrir = data.signedUrl;
-          console.log(`Abrindo arquivo de documento via URL assinada: ${urlParaAbrir}`);
+          // Corrigir caminhos que possam conter URL completa 
+          let caminhoArquivo = documento.arquivo_url;
+          
+          // Se o caminho contiver a URL completa do Supabase, extrair apenas o caminho relativo
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+          if (supabaseUrl && caminhoArquivo.includes(supabaseUrl)) {
+            const regex = new RegExp(`.*?${supabaseUrl}/storage/v1/object/public/documentos/(.*)`, 'i');
+            const matches = caminhoArquivo.match(regex);
+            if (matches && matches[1]) {
+              caminhoArquivo = matches[1];
+              console.log(`Caminho extraído da URL completa: ${caminhoArquivo}`);
+            }
+          }
+          
+          try {
+            // Gerar URL assinada para visualização do arquivo
+            const { data, error } = await supabase.storage
+              .from('documentos')
+              .createSignedUrl(caminhoArquivo, 60); // Validade de 60 segundos
+            
+            if (error) {
+              console.error('Erro ao gerar URL assinada:', error);
+              console.error('Detalhes do erro:', JSON.stringify(error));
+              console.error('Caminho do arquivo tentado:', caminhoArquivo);
+              
+              if (error.message?.includes('not found') || error.message?.includes('Object not found')) {
+                toast.error(`Arquivo não encontrado no armazenamento. ID do documento: ${id}`);
+              } else {
+                toast.error(`Erro ao gerar URL: ${error.message}`);
+              }
+              return;
+            }
+            
+            urlParaAbrir = data.signedUrl;
+            console.log(`Abrindo arquivo de documento via URL assinada: ${urlParaAbrir}`);
+          } catch (storageError) {
+            console.error('Exceção ao processar arquivo de armazenamento:', storageError);
+            toast.error('Falha ao processar arquivo no armazenamento');
+            return;
+          }
         } else if (documento.url_documento) {
           // Fallback para url_documento
           urlParaAbrir = documento.url_documento;
@@ -682,7 +717,10 @@ export default function DocumentosAdmin() {
       }
     } catch (error) {
       console.error('Erro ao visualizar documento:', error);
-      toast.error('Erro ao abrir documento');
+      if (error instanceof Error) {
+        console.error('Detalhes do erro:', error.message, error.stack);
+      }
+      toast.error('Erro ao abrir documento. Verifique o console para detalhes.');
     }
   };
   
