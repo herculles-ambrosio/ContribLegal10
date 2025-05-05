@@ -651,8 +651,19 @@ export default function DocumentosAdmin() {
       } else {
         // Para outros tipos (NOTA DE SERVIÇO, IMPOSTO, etc.), usar arquivo_url
         if (documento.arquivo_url) {
-          urlParaAbrir = documento.arquivo_url;
-          console.log(`Abrindo arquivo de documento: ${urlParaAbrir}`);
+          // Gerar URL assinada para visualização do arquivo
+          const { data, error } = await supabase.storage
+            .from('documentos')
+            .createSignedUrl(documento.arquivo_url, 60); // Validade de 60 segundos
+          
+          if (error) {
+            console.error('Erro ao gerar URL assinada:', error);
+            toast.error('Erro ao gerar URL para visualização');
+            return;
+          }
+          
+          urlParaAbrir = data.signedUrl;
+          console.log(`Abrindo arquivo de documento via URL assinada: ${urlParaAbrir}`);
         } else if (documento.url_documento) {
           // Fallback para url_documento
           urlParaAbrir = documento.url_documento;
