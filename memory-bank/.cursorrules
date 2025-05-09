@@ -1,0 +1,11 @@
+# .cursorrules
+
+## Padrões e Preferências do Projeto
+- Sempre ler e atualizar todos os arquivos do Memory Bank ao iniciar qualquer tarefa.
+- Documentar decisões e mudanças relevantes imediatamente após sua implementação.
+- Manter clareza e rastreabilidade em todos os arquivos markdown.
+
+## Inteligência do Projeto
+- O Memory Bank é a única fonte de verdade após resets de memória.
+- O fluxo de trabalho depende da atualização constante dos arquivos de contexto.
+- Preferência por documentação concisa, clara e objetiva. 
