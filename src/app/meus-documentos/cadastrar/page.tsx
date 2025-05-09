@@ -192,7 +192,7 @@ export default function CadastrarDocumento() {
     console.log('QR Code normalizado:', normalizedResult);
     
     // SEMPRE aceitar o QR code, independente do conteúdo
-    // Armazena o valor lido no campo número do documento
+    // Armazena temporariamente o valor lido no campo número do documento
     setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
     
     // Fechar o scanner automaticamente
@@ -211,6 +211,12 @@ export default function CadastrarDocumento() {
       
       // Atualizar os campos com os dados extraídos (se houver)
       const formUpdates: any = {};
+
+      // Se extraiu o número do documento, usar este valor em vez do link
+      if (fiscalReceiptData.numeroDocumento) {
+        formUpdates.numero_documento = fiscalReceiptData.numeroDocumento;
+        console.log('Número do documento extraído:', fiscalReceiptData.numeroDocumento);
+      }
       
       if (fiscalReceiptData.valor) {
         formUpdates.valor = fiscalReceiptData.valor;
@@ -230,6 +236,7 @@ export default function CadastrarDocumento() {
       
       // Verificar se conseguimos extrair algum dado
       const fieldsExtracted = [];
+      if (fiscalReceiptData.numeroDocumento) fieldsExtracted.push('número do documento');
       if (fiscalReceiptData.valor) fieldsExtracted.push('valor');
       if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
       

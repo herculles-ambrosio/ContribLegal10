@@ -18,6 +18,7 @@ export async function OPTIONS() {
 }
 
 interface FiscalReceiptData {
+  numeroDocumento?: string;
   valor?: string;
   dataEmissao?: string;
   error?: string;
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       
       // Tentar extrair os dados da página - início com regex básicos
       const dados = {
+        numeroDocumento: extrairNumeroDocumento(html),
         valor: extrairValor(html),
         dataEmissao: extrairDataEmissao(html),
       };
@@ -140,12 +142,169 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Função para extrair o número do documento
+function extrairNumeroDocumento(html: string): string | undefined {
+  try {
+    // Carregar o HTML com Cheerio para análise mais precisa
+    const $ = cheerio.load(html);
+    
+    // Tentar encontrar o número do documento com Cheerio
+    // Método 1: Procurar por labels específicos
+    let numeroDocumento: string | undefined;
+    
+    // Procurar em labels comuns usado pela SEFAZ
+    const labelsNumeroDocumento = [
+      'Número da Nota',
+      'Número do Documento',
+      'Número do Cupom',
+      'Número do SAT',
+      'Número',
+      'Nº SAT',
+      'Nº do Documento',
+      'Nº',
+      'Nota Fiscal',
+      'NF nº',
+      'CF nº',
+      'SAT nº'
+    ];
+    
+    // Iterar pelos possíveis labels
+    for (const label of labelsNumeroDocumento) {
+      // Procurar texto contendo o label
+      $('*').each((i, el) => {
+        const text = $(el).text().trim();
+        if (text.includes(label)) {
+          // Verificar se há algum número próximo
+          const parent = $(el).parent();
+          const siblings = parent.children();
+          siblings.each((i, sib) => {
+            const sibText = $(sib).text().trim();
+            // Regex para extrair apenas números
+            const match = sibText.match(/\d+/);
+            if (match) {
+              numeroDocumento = match[0];
+              console.log(`API - Número do documento encontrado no elemento irmão: ${numeroDocumento}`);
+              return false; // Sair do loop
+            }
+          });
+          
+          // Se não encontrou nos irmãos, tentar no próximo elemento
+          const next = $(el).next();
+          const nextText = next.text().trim();
+          const match = nextText.match(/\d+/);
+          if (match) {
+            numeroDocumento = match[0];
+            console.log(`API - Número do documento encontrado no próximo elemento: ${numeroDocumento}`);
+            return false; // Sair do loop
+          }
+        }
+      });
+      
+      if (numeroDocumento) break;
+    }
+    
+    // Se ainda não encontrou, tentar regex no HTML
+    if (!numeroDocumento) {
+      // Tentar diferentes padrões para extrair o número do documento
+      const padroes = [
+        /Número do Documento:?\s*([0-9]+)/i,
+        /Número:?\s*([0-9]+)/i,
+        /Nº:?\s*([0-9]+)/i,
+        /NF\s*nº:?\s*([0-9]+)/i,
+        /Documento:?\s*([0-9]+)/i,
+        /Cupom Fiscal:?\s*([0-9]+)/i,
+        /Nota Fiscal:?\s*([0-9]+)/i,
+        /SAT:?\s*([0-9]+)/i,
+        /Nº SAT:?\s*([0-9]+)/i,
+        /CF:?\s*([0-9]+)/i,
+        /ECF:?\s*([0-9]+)/i,
+        /nNF["':=]\s*["']?([0-9]+)/i,
+        /cNF["':=]\s*["']?([0-9]+)/i,
+        /numeroCupom["':=]\s*["']?([0-9]+)/i,
+        /numeroCF["':=]\s*["']?([0-9]+)/i,
+        /Nro\.?\s*([0-9]{6,})/i,  // Procura números grandes (6+ dígitos)
+        /(\d{9,})/  // Qualquer sequência de 9 ou mais dígitos no HTML
+      ];
+      
+      for (const padrao of padroes) {
+        const match = html.match(padrao);
+        if (match && match[1]) {
+          numeroDocumento = match[1].trim();
+          console.log(`API - Número do documento extraído por regex (padrão ${padrao}): ${numeroDocumento}`);
+          break;
+        }
+      }
+    }
+    
+    return numeroDocumento;
+  } catch (e) {
+    console.error('API - Erro ao extrair número do documento:', e);
+    return undefined;
+  }
+}
+
 // Funções de extração de dados mais robustas
 
 function extrairValor(html: string): string | undefined {
   try {
+    // Carregar o HTML com Cheerio
+    const $ = cheerio.load(html);
+    
+    // Procurar primeiro usando Cheerio por labels comuns de valor
+    const labelsValor = [
+      'Valor pago',
+      'Valor Total',
+      'Valor do Documento',
+      'Valor da Nota',
+      'Total',
+      'Valor final',
+      'Valor'
+    ];
+    
+    // Variável para armazenar o valor encontrado
+    let valorEncontrado: string | undefined;
+    
+    // Iterar pelos possíveis labels
+    for (const label of labelsValor) {
+      if (valorEncontrado) break;
+      
+      // Procurar texto contendo o label
+      $('*').each((i, el) => {
+        if (valorEncontrado) return false; // Encerrar o loop se já encontrou
+        
+        const text = $(el).text().trim();
+        if (text.includes(label)) {
+          // Verificar se há algum valor próximo
+          const parent = $(el).parent();
+          const siblings = parent.children();
+          siblings.each((i, sib) => {
+            if (valorEncontrado) return false; // Encerrar o loop se já encontrou
+            
+            const sibText = $(sib).text().trim();
+            // Regex para extrair valor no formato R$ X,XX ou apenas X,XX
+            const match = sibText.match(/R\$\s*([0-9.,]+)|([0-9,.]+)/);
+            if (match) {
+              const valorStr = match[1] || match[2];
+              const valor = valorStr.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+              if (!isNaN(parseFloat(valor))) {
+                console.log(`API - Valor encontrado por Cheerio: ${valor}`);
+                valorEncontrado = valor;
+                return false; // Encerrar o loop
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    // Se encontrou valor com Cheerio, retornar
+    if (valorEncontrado) {
+      return valorEncontrado;
+    }
+    
     // Tentar diferentes padrões para extrair o valor
     const padroes = [
+      /valor pago\s*(?:R\$)?\s*([0-9.,]+)/i,
       /valor total R\$\s*([0-9.,]+)/i,
       /Valor\s*Total\s*(?:do|da|dos|das)?\s*(?:Documento|Cupom|Nota)?\s*:?\s*R\$?\s*([0-9.,]+)/i,
       /Total\s*(?:R\$|\$)?\s*([0-9.,]+)/i,

@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 
-interface FiscalReceiptData {
+export interface FiscalReceiptData {
+  numeroDocumento?: string;
   valor?: string;
   dataEmissao?: string;
   error?: string;
@@ -33,55 +34,64 @@ export async function extractDataFromFiscalReceipt(
 
     // Fazer requisição para nossa API com timeout aumentado
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // Aumentar para 30 segundos
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     
+    // Se não for uma URL completa, tentar adicionar o protocolo
+    let url = normalizedLink;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+      console.log('URL modificada com protocolo https:', url);
+    }
+
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ qrCodeLink: normalizedLink }),
+        body: JSON.stringify({ qrCodeLink: url }),
         signal: controller.signal,
       });
-      
-      // Limpar timeout após resposta
+
+      // Limpar timeout
       clearTimeout(timeoutId);
 
-      // Aumentar logs para debugging 
       if (!response.ok) {
-        const statusText = response.statusText;
-        console.error(`Erro na requisição para API: ${response.status} - ${statusText}`);
-        
-        try {
-          // Tentar obter detalhes do erro
-          const errorData = await response.text();
-          console.error('Detalhes do erro da API:', errorData);
-        } catch (e) {
-          console.error('Não foi possível ler detalhes do erro');
-        }
-        
-        return { error: `Erro ao extrair dados do cupom fiscal: ${response.status}` };
+        console.error(`Erro na API: ${response.status}`);
+        return {
+          error: `Erro ao acessar a API: ${response.status}`,
+        };
       }
 
       const data = await response.json();
-      console.log('Resposta da API de extração:', data);
-
-      return data;
-    } catch (fetchError) {
+      console.log('Dados extraídos:', data);
+      
+      // Retornar os dados normalizados
+      return {
+        numeroDocumento: data.numeroDocumento,
+        valor: data.valor,
+        dataEmissao: data.dataEmissao,
+      };
+    } catch (error) {
       // Limpar timeout em caso de erro
       clearTimeout(timeoutId);
       
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        console.error('Timeout na requisição para o site da SEFAZ');
-        return { error: 'Timeout ao acessar a página do cupom fiscal' };
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Timeout na requisição para a API');
+        return {
+          error: 'A requisição para a API excedeu o tempo limite.',
+        };
       }
       
-      console.error('Erro durante o fetch:', fetchError);
-      return { error: 'Erro de conexão ao processar o QR code' };
+      console.error('Erro durante a extração de dados:', error);
+      return {
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+      };
     }
-  } catch (error) {
-    console.error('Erro ao extrair dados do cupom fiscal:', error);
-    return { error: 'Erro ao processar a página do cupom fiscal' };
+  } catch (generalError) {
+    console.error('Erro geral na extração:', generalError);
+    return {
+      error: generalError instanceof Error ? generalError.message : 'Erro desconhecido na extração',
+    };
   }
 } 
