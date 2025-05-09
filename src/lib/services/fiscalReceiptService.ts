@@ -16,12 +16,35 @@ export async function extractDataFromFiscalReceipt(
   apiBaseUrl?: string
 ): Promise<FiscalReceiptData> {
   try {
-    // Verificar se o link parece ser válido
-    if (!qrCodeLink.includes('fazenda.mg.gov.br') && 
-        !qrCodeLink.includes('sefaz.mg.gov.br') && 
-        !qrCodeLink.includes('portalsped') && 
-        !qrCodeLink.includes('nfce')) {
-      return { error: 'O link não parece ser de um cupom fiscal da SEFAZ MG' };
+    // Normalizar URL - remover espaços e caracteres estranhos
+    const normalizedLink = qrCodeLink.trim();
+    console.log('Link normalizado para extração:', normalizedLink);
+    
+    // Lista expandida de padrões para validação mais flexível
+    const domainPatterns = [
+      'fazenda.mg.gov.br', 
+      'sefaz.mg.gov.br', 
+      'portalsped',
+      'nfce',
+      'sat.sef',
+      'nfe.fazenda',
+      'sef.mg',
+      'fiscal',
+      'sped',
+      'nf-e',
+      'nf.gov',
+      'receita'
+    ];
+    
+    // Verificar se o link parece ser válido - validação mais flexível
+    const isValidSefazLink = domainPatterns.some(pattern => 
+      normalizedLink.toLowerCase().includes(pattern.toLowerCase())
+    ) || normalizedLink.startsWith('http') || normalizedLink.includes('.gov.') || normalizedLink.includes('cupom');
+    
+    // Aviso caso não pareça ser um link válido, mas continuar mesmo assim
+    if (!isValidSefazLink) {
+      console.warn('Link não reconhecido como padrão de cupom fiscal:', normalizedLink);
+      console.warn('Continuando processamento com validação flexível...');
     }
 
     // Determinar a URL da API baseado no ambiente
@@ -29,7 +52,7 @@ export async function extractDataFromFiscalReceipt(
       ? `${apiBaseUrl}/api/fiscal-receipt` 
       : '/api/fiscal-receipt';
 
-    console.log('Enviando requisição para API de extração:', qrCodeLink);
+    console.log('Enviando requisição para API de extração:', normalizedLink);
     console.log('URL da API utilizada:', apiUrl);
 
     // Fazer requisição para nossa API
@@ -38,11 +61,22 @@ export async function extractDataFromFiscalReceipt(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ qrCodeLink }),
+      body: JSON.stringify({ qrCodeLink: normalizedLink }),
     });
 
+    // Aumentar logs para debugging 
     if (!response.ok) {
-      console.error(`Erro na requisição para API: ${response.status}`);
+      const statusText = response.statusText;
+      console.error(`Erro na requisição para API: ${response.status} - ${statusText}`);
+      
+      try {
+        // Tentar obter detalhes do erro
+        const errorData = await response.text();
+        console.error('Detalhes do erro da API:', errorData);
+      } catch (e) {
+        console.error('Não foi possível ler detalhes do erro');
+      }
+      
       return { error: `Erro ao extrair dados do cupom fiscal: ${response.status}` };
     }
 

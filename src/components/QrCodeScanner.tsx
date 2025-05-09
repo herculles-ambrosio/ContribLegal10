@@ -185,31 +185,51 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
 
       // Configuração otimizada para QR codes 
       const config = {
-        fps: 10, // Taxa de quadros mais baixa para processamento mais eficiente
-        qrbox: { 
-          width: 250, // Área de escaneamento mais precisa
-          height: 250
-        },
+        fps: scanAttempts > 3 ? 5 : 10, // Reduzir FPS após mais tentativas para processamento mais profundo
+        qrbox: scanAttempts > 3 
+          ? { width: 350, height: 350 } // Área maior após várias tentativas
+          : { width: 250, height: 250 }, // Padrão  
         aspectRatio: 1.0,
         disableFlip: false, // Permitir leitura em qualquer orientação
         experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true // Usar API nativa se disponível
+          useBarCodeDetectorIfSupported: true, // Usar API nativa se disponível
+          debugMode: scanAttempts > 5, // Ativar modo de debug após muitas tentativas
         },
+        rememberLastUsedCamera: true,
+        showTorchButtonIfSupported: false, // Usaremos nosso próprio botão
+        focusMode: "continuous", // Manter foco continuo para melhor leitura
+        videoConstraints: {
+          // Tentar obter resolução mais alta após falhas
+          width: { ideal: scanAttempts > 2 ? 1920 : 1280 },
+          height: { ideal: scanAttempts > 2 ? 1080 : 720 },
+          facingMode: { exact: "environment" } // Usar câmera traseira
+        },
+        // Tolerância aumentada para reconhecer QR codes de baixa qualidade
         formatsToSupport: [
           Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.AZTEC,
           Html5QrcodeSupportedFormats.DATA_MATRIX
         ],
-        // Aumentar capacidade de processamento
-        returnDataInCallback: true,
-        showTorchButtonIfSupported: false, // Usaremos nosso próprio botão
-        focusMode: "continuous", // Manter foco continuo para melhor leitura
       };
 
-      // Após algumas tentativas, ajustar as configurações para tentar uma abordagem diferente
-      if (scanAttempts > 2) {
-        config.fps = 5; // Reduzir FPS para processamento mais profundo
-        config.qrbox = { width: 400, height: 400 }; // Área maior
+      // Forçar um refresh completo do scanner após muitas tentativas
+      if (scanAttempts > 0 && scanAttempts % 3 === 0) {
+        // Parar completamente
+        if (scannerRef.current && scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING) {
+          await scannerRef.current.stop();
+        }
+        
+        // Pequena pausa para reinicializar completamente
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Resetar a câmera antes de iniciar novamente 
+        if (scannerRef.current) {
+          try {
+            await scannerRef.current.clear();
+          } catch (e) {
+            console.log('Reinicialização da câmera');
+          }
+        }
       }
 
       await scannerRef.current.start(
@@ -221,7 +241,9 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
           if (
             typeof errorMessage === 'string' && (
               errorMessage.includes('No QR code found') ||
-              errorMessage.includes('Scanning paused')
+              errorMessage.includes('Scanning paused') ||
+              errorMessage.includes('No MultiFormat Readers') ||
+              errorMessage.includes('Decoder result')
             )
           ) {
             return;
