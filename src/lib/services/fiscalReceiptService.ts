@@ -20,33 +20,9 @@ export async function extractDataFromFiscalReceipt(
     const normalizedLink = qrCodeLink.trim();
     console.log('Link normalizado para extração:', normalizedLink);
     
-    // Lista expandida de padrões para validação mais flexível
-    const domainPatterns = [
-      'fazenda.mg.gov.br', 
-      'sefaz.mg.gov.br', 
-      'portalsped',
-      'nfce',
-      'sat.sef',
-      'nfe.fazenda',
-      'sef.mg',
-      'fiscal',
-      'sped',
-      'nf-e',
-      'nf.gov',
-      'receita'
-    ];
+    // Aceitar qualquer formato de QR code, sem restrições
+    console.log('Processando QR code (formato flexível):', normalizedLink);
     
-    // Verificar se o link parece ser válido - validação mais flexível
-    const isValidSefazLink = domainPatterns.some(pattern => 
-      normalizedLink.toLowerCase().includes(pattern.toLowerCase())
-    ) || normalizedLink.startsWith('http') || normalizedLink.includes('.gov.') || normalizedLink.includes('cupom');
-    
-    // Aviso caso não pareça ser um link válido, mas continuar mesmo assim
-    if (!isValidSefazLink) {
-      console.warn('Link não reconhecido como padrão de cupom fiscal:', normalizedLink);
-      console.warn('Continuando processamento com validação flexível...');
-    }
-
     // Determinar a URL da API baseado no ambiente
     const apiUrl = apiBaseUrl 
       ? `${apiBaseUrl}/api/fiscal-receipt` 
@@ -55,35 +31,55 @@ export async function extractDataFromFiscalReceipt(
     console.log('Enviando requisição para API de extração:', normalizedLink);
     console.log('URL da API utilizada:', apiUrl);
 
-    // Fazer requisição para nossa API
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ qrCodeLink: normalizedLink }),
-    });
-
-    // Aumentar logs para debugging 
-    if (!response.ok) {
-      const statusText = response.statusText;
-      console.error(`Erro na requisição para API: ${response.status} - ${statusText}`);
+    // Fazer requisição para nossa API com timeout aumentado
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // Aumentar para 30 segundos
+    
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ qrCodeLink: normalizedLink }),
+        signal: controller.signal,
+      });
       
-      try {
-        // Tentar obter detalhes do erro
-        const errorData = await response.text();
-        console.error('Detalhes do erro da API:', errorData);
-      } catch (e) {
-        console.error('Não foi possível ler detalhes do erro');
+      // Limpar timeout após resposta
+      clearTimeout(timeoutId);
+
+      // Aumentar logs para debugging 
+      if (!response.ok) {
+        const statusText = response.statusText;
+        console.error(`Erro na requisição para API: ${response.status} - ${statusText}`);
+        
+        try {
+          // Tentar obter detalhes do erro
+          const errorData = await response.text();
+          console.error('Detalhes do erro da API:', errorData);
+        } catch (e) {
+          console.error('Não foi possível ler detalhes do erro');
+        }
+        
+        return { error: `Erro ao extrair dados do cupom fiscal: ${response.status}` };
+      }
+
+      const data = await response.json();
+      console.log('Resposta da API de extração:', data);
+
+      return data;
+    } catch (fetchError) {
+      // Limpar timeout em caso de erro
+      clearTimeout(timeoutId);
+      
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('Timeout na requisição para o site da SEFAZ');
+        return { error: 'Timeout ao acessar a página do cupom fiscal' };
       }
       
-      return { error: `Erro ao extrair dados do cupom fiscal: ${response.status}` };
+      console.error('Erro durante o fetch:', fetchError);
+      return { error: 'Erro de conexão ao processar o QR code' };
     }
-
-    const data = await response.json();
-    console.log('Resposta da API de extração:', data);
-
-    return data;
   } catch (error) {
     console.error('Erro ao extrair dados do cupom fiscal:', error);
     return { error: 'Erro ao processar a página do cupom fiscal' };

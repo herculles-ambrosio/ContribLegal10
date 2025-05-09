@@ -191,118 +191,63 @@ export default function CadastrarDocumento() {
     const normalizedResult = result.trim();
     console.log('QR Code normalizado:', normalizedResult);
     
-    // Expandir validação para incluir mais domínios e padrões da SEFAZ
-    const domainPatterns = [
-      'fazenda.mg.gov.br', 
-      'sefaz.mg.gov.br', 
-      'portalsped',
-      'nfce',
-      'sat.sef',
-      'nfe.fazenda',
-      'sef.mg',
-      'fiscal',
-      'sped',
-      'nf-e',
-      'nf.gov',
-      'receita'
-    ];
+    // SEMPRE aceitar o QR code, independente do conteúdo
+    // Armazena o valor lido no campo número do documento
+    setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
     
-    // Verificar se qualquer um dos padrões está presente no link
-    const isStandardLink = domainPatterns.some(pattern => 
-      normalizedResult.toLowerCase().includes(pattern.toLowerCase())
-    );
+    // Fechar o scanner automaticamente
+    setShowScanner(false);
     
-    console.log('É um link padrão SEFAZ?', isStandardLink);
+    // Mostrar modal de carregamento
+    setExtractionMessage('Extraindo dados do cupom fiscal...');
+    setIsExtracting(true);
     
-    // Extrair o link do QR code e armazenar no campo de número do documento
     try {
-      // Verificação mais flexível - aceitar QR codes que pareçam ser links de sites governamentais
-      // ou contendo padrões comuns de cupons fiscais
-      if (isStandardLink || 
-          // Verificações adicionais que podem indicar URL ou cupom fiscal
-          normalizedResult.startsWith('http') || 
-          normalizedResult.includes('.gov.') ||
-          normalizedResult.includes('cupom')) {
-        
-        // Armazena o link completo no campo número do documento
-        setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
-        
-        // Fechar o scanner automaticamente
-        setShowScanner(false);
-        
-        // Mostrar modal de carregamento
-        setExtractionMessage('Extraindo dados do cupom fiscal...');
-        setIsExtracting(true);
-        
-        try {
-          // Extrair dados adicionais do cupom fiscal
-          const fiscalReceiptData = await extractDataFromFiscalReceipt(normalizedResult);
-          
-          // Esconder modal de carregamento
-          setIsExtracting(false);
-          
-          if (fiscalReceiptData.error) {
-            console.error('Erro na extração de dados:', fiscalReceiptData.error);
-            
-            // Mensagem mais útil e menos técnica
-            toast.error('QR Code lido com sucesso, mas não conseguimos extrair todos os dados automaticamente. Por favor, verifique e complete as informações manualmente.');
-            return;
-          }
-          
-          // Atualizar os campos com os dados extraídos
-          const formUpdates: any = {};
-          
-          if (fiscalReceiptData.valor) {
-            formUpdates.valor = fiscalReceiptData.valor;
-          }
-          
-          if (fiscalReceiptData.dataEmissao) {
-            // Converter data de DD/MM/AAAA para YYYY-MM-DD (formato aceito pelo input type="date")
-            const dataParts = fiscalReceiptData.dataEmissao.split('/');
-            if (dataParts.length === 3) {
-              const [dia, mes, ano] = dataParts;
-              formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-              console.log('Data formatada para o formulário:', formUpdates.data_emissao);
-            } else {
-              formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
-            }
-          }
-          
-          // Atualizar o formulário com os dados extraídos
-          setFormData(prev => ({ ...prev, ...formUpdates }));
-          
-          // Mostrar feedback de sucesso com detalhes
-          const fieldsExtracted = [];
-          if (fiscalReceiptData.valor) fieldsExtracted.push('valor');
-          if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
-          
-          if (fieldsExtracted.length > 0) {
-            toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
-          } else {
-            toast.success('QR Code lido com sucesso!');
-          }
-        } catch (extractionError) {
-          // Esconder modal de carregamento em caso de erro
-          setIsExtracting(false);
-          console.error('Erro ao extrair dados:', extractionError);
-          toast.error('QR Code lido, mas não foi possível extrair dados adicionais. Por favor, preencha os campos manualmente.');
-        }
-      } else {
-        // Registrar o valor para análise - pode ajudar a identificar padrões a adicionar posteriormente
-        console.warn('QR Code não reconhecido como cupom fiscal SEFAZ MG:', normalizedResult);
-        
-        // Ainda armazenar o valor mesmo se não reconhecido como cupom fiscal
-        setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
-        setShowScanner(false);
-        
-        // Mensagem mais útil com possíveis soluções
-        toast.error('O QR Code lido não parece ser de um cupom fiscal da SEFAZ MG, mas foi registrado. Verifique se é o QR Code correto e se necessário edite o valor manualmente.');
+      // Tentar extrair dados adicionais do cupom fiscal
+      const fiscalReceiptData = await extractDataFromFiscalReceipt(normalizedResult);
+      
+      // Esconder modal de carregamento
+      setIsExtracting(false);
+      
+      // Atualizar os campos com os dados extraídos (se houver)
+      const formUpdates: any = {};
+      
+      if (fiscalReceiptData.valor) {
+        formUpdates.valor = fiscalReceiptData.valor;
       }
-    } catch (error) {
-      console.error('Erro ao processar QR Code:', error);
-      setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
-      setShowScanner(false);
-      toast.success('QR Code lido, mas pode não ser do formato esperado');
+      
+      if (fiscalReceiptData.dataEmissao) {
+        // Converter data de DD/MM/AAAA para YYYY-MM-DD (formato aceito pelo input type="date")
+        const dataParts = fiscalReceiptData.dataEmissao.split('/');
+        if (dataParts.length === 3) {
+          const [dia, mes, ano] = dataParts;
+          formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+          console.log('Data formatada para o formulário:', formUpdates.data_emissao);
+        } else {
+          formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+        }
+      }
+      
+      // Verificar se conseguimos extrair algum dado
+      const fieldsExtracted = [];
+      if (fiscalReceiptData.valor) fieldsExtracted.push('valor');
+      if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
+      
+      // Atualizar o formulário com os dados extraídos
+      if (fieldsExtracted.length > 0) {
+        setFormData(prev => ({ ...prev, ...formUpdates }));
+        toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
+      } else if (fiscalReceiptData.error) {
+        console.error('Erro na extração de dados:', fiscalReceiptData.error);
+        toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
+      } else {
+        toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
+      }
+    } catch (extractionError) {
+      // Esconder modal de carregamento em caso de erro
+      setIsExtracting(false);
+      console.error('Erro ao extrair dados:', extractionError);
+      toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
     }
   };
 

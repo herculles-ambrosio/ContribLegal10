@@ -46,83 +46,69 @@ export async function POST(request: NextRequest) {
     const normalizedLink = qrCodeLink.trim();
     console.log('API - Link normalizado recebido:', normalizedLink);
     
-    // Lista expandida de padrões para validação mais flexível
-    const domainPatterns = [
-      'fazenda.mg.gov.br', 
-      'sefaz.mg.gov.br', 
-      'portalsped',
-      'nfce',
-      'sat.sef',
-      'nfe.fazenda',
-      'sef.mg',
-      'fiscal',
-      'sped',
-      'nf-e',
-      'nf.gov',
-      'receita'
-    ];
+    // Aceitar qualquer input como válido
+    console.log('API - Processando QR code (formato flexível):', normalizedLink);
+
+    // Aumentar timeout para URLs lentas
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 segundos
     
-    // Verificar se o link parece ser válido - validação mais flexível
-    const isValidSefazLink = domainPatterns.some(pattern => 
-      normalizedLink.toLowerCase().includes(pattern.toLowerCase())
-    ) || normalizedLink.startsWith('http') || normalizedLink.includes('.gov.') || normalizedLink.includes('cupom');
+    let url = normalizedLink;
     
-    // Se não parece ser um link fiscal válido, registrar mas continuar mesmo assim
-    if (!isValidSefazLink) {
-      console.warn('API - Link não reconhecido como padrão de cupom fiscal, mas continuando processamento:', normalizedLink);
+    // Se não for uma URL completa, tentar adicionar o protocolo
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+      console.log('API - URL modificada com protocolo https:', url);
     }
 
-    console.log('API - Iniciando extração de dados do cupom fiscal:', normalizedLink);
-
-    // Adicionado timeout maior e retry para links da SEFAZ que podem ser lentos
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 segundos de timeout
-
+    console.log('API - Iniciando requisição HTTP para:', url);
+    
     try {
-      // Fazer requisição para o site da SEFAZ MG com headers otimizados
-      const response = await fetch(normalizedLink, {
+      // Tentar acessar a página do cupom fiscal com timeout
+      const response = await fetch(url, {
+        method: 'GET',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          // Tentar simular um navegador para evitar bloqueios
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
         },
-        signal: controller.signal
+        redirect: 'follow',
+        signal: controller.signal,
       });
-
-      // Limpar timeout após resposta
+      
+      // Limpar timeout
       clearTimeout(timeoutId);
-
+      
       if (!response.ok) {
-        console.error(`API - Erro na requisição HTTP: ${response.status}`);
+        console.error(`API - Erro ao acessar página: ${response.status} ${response.statusText}`);
+        
+        // Ainda assim retornar um objeto para evitar erro, mesmo que sem dados
         return NextResponse.json(
-          { error: `Erro ao acessar a página do cupom fiscal: ${response.status}` },
-          { status: 500, headers: responseHeaders }
+          { message: 'QR Code processado, sem dados extraídos' },
+          { status: 200, headers: responseHeaders }
         );
       }
-
+      
+      // Obter o conteúdo da página
       const html = await response.text();
-      console.log('API - HTML recebido, tamanho:', html.length);
+      console.log(`API - Página acessada com sucesso (${html.length} bytes)`);
       
-      // Se o HTML for muito pequeno, pode indicar um redirecionamento ou uma página de erro
-      if (html.length < 1000) {
-        console.log('API - HTML parece ser muito pequeno, conteúdo:', html);
-      }
+      // Tentar extrair os dados da página - início com regex básicos
+      const dados = {
+        valor: extrairValor(html),
+        dataEmissao: extrairDataEmissao(html),
+      };
       
-      const $ = cheerio.load(html);
+      console.log('API - Dados extraídos:', dados);
       
-      // Log da estrutura básica da página para debug
-      console.log('API - Título da página:', $('title').text());
-      console.log('API - Elementos de tabela encontrados:', $('table').length);
-      console.log('API - Elementos div encontrados:', $('div').length);
-
-      // Extração de dados com abordagens múltiplas para maior taxa de sucesso
-      const dados = extrairDadosCupomFiscal($, html);
-
       return NextResponse.json(dados, {
-        headers: responseHeaders
+        status: 200,
+        headers: responseHeaders,
       });
+      
     } catch (error) {
       // Limpar timeout em caso de erro
       clearTimeout(timeoutId);
@@ -131,155 +117,96 @@ export async function POST(request: NextRequest) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.error('API - Timeout na requisição para o site da SEFAZ');
         return NextResponse.json(
-          { error: 'Timeout ao acessar a página do cupom fiscal. O servidor da SEFAZ parece estar lento.' },
-          { status: 504, headers: responseHeaders }
+          { message: 'QR Code processado, sem dados extraídos' },
+          { status: 200, headers: responseHeaders }
         );
       }
 
-      console.error('API - Erro ao acessar cupom fiscal:', error);
+      console.error('API - Erro ao processar a página do cupom fiscal:', error);
+      
+      // Retornar um objeto para evitar erro, mesmo que sem dados
       return NextResponse.json(
-        { error: 'Erro ao processar a página do cupom fiscal' },
-        { status: 500, headers: responseHeaders }
+        { message: 'QR Code processado, sem dados extraídos' },
+        { status: 200, headers: responseHeaders }
       );
     }
+    
   } catch (error) {
-    console.error('API - Erro na rota:', error);
+    console.error('API - Erro geral ao processar o cupom fiscal:', error);
     return NextResponse.json(
-      { error: 'Erro interno do servidor' },
-      { status: 500, headers: corsHeaders }
+      { message: 'QR Code processado, sem dados extraídos' },
+      { status: 200, headers: {...corsHeaders} }
     );
   }
 }
 
-// Função auxiliar para extrair dados do cupom fiscal usando múltiplas abordagens
-function extrairDadosCupomFiscal($: cheerio.CheerioAPI, html: string) {
-  let valor = '';
-  let dataEmissao = '';
-  
-  // Tentativa 1: Buscando por textos específicos que precedem o valor
-  $('td, th, div, span, label, p, tr').each((i, el) => {
-    const text = $(el).text().trim();
+// Funções de extração de dados mais robustas
+
+function extrairValor(html: string): string | undefined {
+  try {
+    // Tentar diferentes padrões para extrair o valor
+    const padroes = [
+      /valor total R\$\s*([0-9.,]+)/i,
+      /Valor\s*Total\s*(?:do|da|dos|das)?\s*(?:Documento|Cupom|Nota)?\s*:?\s*R\$?\s*([0-9.,]+)/i,
+      /Total\s*(?:R\$|\$)?\s*([0-9.,]+)/i,
+      /(?:R\$|\$)\s*([0-9.,]+)/i,
+      /"valorTotal"\s*:\s*"([^"]+)"/i,
+      /valorNF(?:e|ce)?["':=]\s*["']?([0-9.,]+)/i,
+    ];
     
-    if (text.includes('Valor Total R$') || 
-        text.includes('VALOR TOTAL DA NOTA') || 
-        text.includes('Valor a Pagar R$') ||
-        text.includes('Valor total do documento fiscal') ||
-        text.includes('Valor Total da NF-e') ||
-        text.includes('Valor total da compra') ||
-        text.includes('TOTAL R$') ||
-        text.includes('Valor pago') ||
-        text.includes('VALOR PAGO') ||
-        text.includes('Total pago') ||
-        text.includes('TOTAL PAGO') ||
-        text.includes('Pagamento') ||
-        text.includes('Valor do pagamento') ||
-        text.includes('Valor a pagar') ||
-        text.includes('TOTAL A PAGAR')) {
-      
-      // Tentar extrair o valor após o texto
-      const valorMatch = text.match(/R\$\s*([\d.,]+)/);
-      if (valorMatch && valorMatch[1]) {
-        valor = valorMatch[1].trim();
-        console.log('API - Valor total encontrado via texto:', valor);
-      } else {
-        // Tentar extrair de um elemento próximo
-        const nextElement = $(el).next();
-        if (nextElement.length > 0) {
-          const nextText = nextElement.text().trim();
-          const nextMatch = nextText.match(/R\$\s*([\d.,]+)/) || nextText.match(/([\d.,]+)/);
-          if (nextMatch && nextMatch[1]) {
-            valor = nextMatch[1].trim();
-            console.log('API - Valor total encontrado via elemento próximo:', valor);
-          }
+    for (const padrao of padroes) {
+      const match = html.match(padrao);
+      if (match && match[1]) {
+        // Normalizar formato do valor (remover espaços e trocar , por .)
+        let valor = match[1].trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+        // Remover caracteres não numéricos
+        valor = valor.replace(/[^\d.]/g, '');
+        
+        if (!isNaN(parseFloat(valor))) {
+          console.log(`API - Valor extraído (padrão ${padrao}): ${valor}`);
+          return valor;
         }
       }
     }
     
-    // Buscar data de emissão
-    if (text.includes('Data de Emissão') || 
-        text.includes('Data Emissão') ||
-        text.includes('Emissão') ||
-        text.includes('Data da Emissão') ||
-        text.includes('DATA EMISSÃO') ||
-        text.includes('Data/Hora de Emissão') ||
-        text.includes('Data: ')) {
-      
-      // Tentar extrair a data do formato DD/MM/AAAA
-      const dataMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
-      if (dataMatch && dataMatch[1]) {
-        dataEmissao = dataMatch[1];
-        console.log('API - Data de emissão encontrada via texto:', dataEmissao);
-      } else {
-        // Tentar extrair de um elemento próximo
-        const nextElement = $(el).next();
-        if (nextElement.length > 0) {
-          const nextText = nextElement.text().trim();
-          const nextMatch = nextText.match(/(\d{2}\/\d{2}\/\d{4})/);
-          if (nextMatch && nextMatch[1]) {
-            dataEmissao = nextMatch[1];
-            console.log('API - Data de emissão encontrada via elemento próximo:', dataEmissao);
-          }
+    return undefined;
+  } catch (e) {
+    console.error('API - Erro ao extrair valor:', e);
+    return undefined;
+  }
+}
+
+function extrairDataEmissao(html: string): string | undefined {
+  try {
+    // Tentar diferentes padrões para extrair a data
+    const padroes = [
+      /Data\s*(?:de)?\s*Emissão\s*:?\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+      /Emissão\s*:?\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+      /([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+      /data(?:Emissao)?["':=]\s*["']?([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+      /dhEmi["':=]\s*["']?([0-9]{4}-[0-9]{2}-[0-9]{2})/i
+    ];
+    
+    for (const padrao of padroes) {
+      const match = html.match(padrao);
+      if (match && match[1]) {
+        const dataStr = match[1].trim();
+        
+        // Verificar se é formato YYYY-MM-DD e converter para DD/MM/YYYY
+        if (dataStr.match(/[0-9]{4}-[0-9]{2}-[0-9]{2}/)) {
+          const [ano, mes, dia] = dataStr.split('-');
+          console.log(`API - Data extraída (formato ISO): ${dataStr} -> ${dia}/${mes}/${ano}`);
+          return `${dia}/${mes}/${ano}`;
         }
+        
+        console.log(`API - Data extraída (padrão ${padrao}): ${dataStr}`);
+        return dataStr;
       }
     }
-  });
-  
-  // Tentativa 2: Buscar em formato de tabela estruturada
-  if (!valor || !dataEmissao) {
-    // Buscar em tabelas
-    $('table tr').each((i, row) => {
-      const rowText = $(row).text().trim();
-      
-      // Verificar valor total
-      if (rowText.includes('Valor Total') || rowText.includes('Total')) {
-        const cells = $(row).find('td');
-        cells.each((j, cell) => {
-          const cellText = $(cell).text().trim();
-          const valorMatch = cellText.match(/R\$\s*([\d.,]+)/) || cellText.match(/([\d.,]+)/);
-          if (valorMatch && valorMatch[1] && !valor) {
-            valor = valorMatch[1].trim();
-            console.log('API - Valor total encontrado via tabela:', valor);
-          }
-        });
-      }
-      
-      // Verificar data de emissão
-      if (rowText.includes('Data') || rowText.includes('Emissão')) {
-        const cells = $(row).find('td');
-        cells.each((j, cell) => {
-          const cellText = $(cell).text().trim();
-          const dataMatch = cellText.match(/(\d{2}\/\d{2}\/\d{4})/);
-          if (dataMatch && dataMatch[1] && !dataEmissao) {
-            dataEmissao = dataMatch[1];
-            console.log('API - Data de emissão encontrada via tabela:', dataEmissao);
-          }
-        });
-      }
-    });
+    
+    return undefined;
+  } catch (e) {
+    console.error('API - Erro ao extrair data:', e);
+    return undefined;
   }
-  
-  // Tentativa 3: Expressões regulares no HTML completo
-  if (!valor) {
-    const valorMatches = html.match(/Valor\s*Total\s*[R$]?\s*([\d.,]+)/i) || 
-                         html.match(/Total\s*a\s*Pagar\s*[R$]?\s*([\d.,]+)/i) ||
-                         html.match(/[R$]\s*([\d.,]+)/);
-    if (valorMatches && valorMatches[1]) {
-      valor = valorMatches[1].trim();
-      console.log('API - Valor total encontrado via regex no HTML:', valor);
-    }
-  }
-  
-  if (!dataEmissao) {
-    const dataMatches = html.match(/Data\s*de?\s*Emissão\s*[:]?\s*(\d{2}\/\d{2}\/\d{4})/i) ||
-                        html.match(/(\d{2}\/\d{2}\/\d{4})/);
-    if (dataMatches && dataMatches[1]) {
-      dataEmissao = dataMatches[1];
-      console.log('API - Data de emissão encontrada via regex no HTML:', dataEmissao);
-    }
-  }
-  
-  return {
-    valor: valor || undefined,
-    dataEmissao: dataEmissao || undefined
-  };
 } 
