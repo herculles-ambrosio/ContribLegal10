@@ -205,6 +205,7 @@ export default function CadastrarDocumento() {
     try {
       // Tentar extrair dados adicionais do cupom fiscal
       const fiscalReceiptData = await extractDataFromFiscalReceipt(normalizedResult);
+      console.log('Dados extraídos do cupom fiscal:', fiscalReceiptData);
       
       // Esconder modal de carregamento
       setIsExtracting(false);
@@ -218,18 +219,48 @@ export default function CadastrarDocumento() {
         console.log('Número do documento extraído:', fiscalReceiptData.numeroDocumento);
       }
       
+      // Processar o valor
       if (fiscalReceiptData.valor) {
-        formUpdates.valor = fiscalReceiptData.valor;
+        // Verificar se o valor já está como número decimal
+        let valorNumerico: number;
+        
+        try {
+          // Converter o valor para número (já deve estar usando ponto decimal)
+          valorNumerico = parseFloat(fiscalReceiptData.valor);
+          
+          if (!isNaN(valorNumerico)) {
+            // Formatar para exibição no formato brasileiro
+            const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+            
+            formUpdates.valor = valorFormatado;
+            console.log('Valor extraído e formatado:', valorFormatado);
+          }
+        } catch (e) {
+          console.error('Erro ao processar valor extraído:', e);
+          // Em caso de erro, tentar usar o valor bruto
+          formUpdates.valor = fiscalReceiptData.valor.replace('.', ',');
+        }
       }
       
+      // Processar a data de emissão
       if (fiscalReceiptData.dataEmissao) {
-        // Converter data de DD/MM/AAAA para YYYY-MM-DD (formato aceito pelo input type="date")
-        const dataParts = fiscalReceiptData.dataEmissao.split('/');
-        if (dataParts.length === 3) {
-          const [dia, mes, ano] = dataParts;
-          formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-          console.log('Data formatada para o formulário:', formUpdates.data_emissao);
-        } else {
+        try {
+          // Verificar se a data está no formato DD/MM/AAAA
+          if (fiscalReceiptData.dataEmissao.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [dia, mes, ano] = fiscalReceiptData.dataEmissao.split('/');
+            // Converter para formato YYYY-MM-DD para o input type="date"
+            formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+            console.log('Data formatada para o formulário:', formUpdates.data_emissao);
+          } else {
+            // Tentar outros formatos ou usar como está
+            formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+          }
+        } catch (e) {
+          console.error('Erro ao processar data extraída:', e);
+          // Em caso de erro, deixar a data como está
           formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
         }
       }
@@ -241,20 +272,25 @@ export default function CadastrarDocumento() {
       if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
       
       // Atualizar o formulário com os dados extraídos
-      if (fieldsExtracted.length > 0) {
+      if (Object.keys(formUpdates).length > 0) {
         setFormData(prev => ({ ...prev, ...formUpdates }));
-        toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
+        
+        if (fieldsExtracted.length > 0) {
+          toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
+        } else {
+          toast.success('QR Code lido! Verifique os dados preenchidos.');
+        }
       } else if (fiscalReceiptData.error) {
         console.error('Erro na extração de dados:', fiscalReceiptData.error);
-        toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
+        toast.error('Erro ao extrair dados. Por favor, preencha os campos manualmente.');
       } else {
-        toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
+        toast.success('QR Code lido! Por favor, verifique e complete os campos necessários.');
       }
     } catch (extractionError) {
       // Esconder modal de carregamento em caso de erro
       setIsExtracting(false);
       console.error('Erro ao extrair dados:', extractionError);
-      toast.success('QR Code lido! Por favor, preencha os campos manualmente.');
+      toast.error('Falha ao extrair dados do QR code. Por favor, preencha os campos manualmente.');
     }
   };
 
