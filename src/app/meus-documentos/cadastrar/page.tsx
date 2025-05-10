@@ -198,8 +198,8 @@ export default function CadastrarDocumento() {
     // Fechar o scanner automaticamente
     setShowScanner(false);
     
-    // Mostrar modal de carregamento
-    setExtractionMessage('Extraindo dados do cupom fiscal...');
+    // Mostrar modal de carregamento com mensagem mais descritiva
+    setExtractionMessage('Extraindo dados do cupom fiscal - isso pode demorar alguns segundos...');
     setIsExtracting(true);
     
     try {
@@ -219,14 +219,12 @@ export default function CadastrarDocumento() {
         console.log('Número do documento extraído:', fiscalReceiptData.numeroDocumento);
       }
       
-      // Processar o valor
+      // Processar o valor (garantir formato brasileiro)
       if (fiscalReceiptData.valor) {
-        // Verificar se o valor já está como número decimal
-        let valorNumerico: number;
-        
         try {
-          // Converter o valor para número (já deve estar usando ponto decimal)
-          valorNumerico = parseFloat(fiscalReceiptData.valor);
+          // Garantir que estamos lidando com um número
+          const valor = fiscalReceiptData.valor.toString().replace(',', '.');
+          const valorNumerico = parseFloat(valor);
           
           if (!isNaN(valorNumerico)) {
             // Formatar para exibição no formato brasileiro
@@ -237,31 +235,40 @@ export default function CadastrarDocumento() {
             
             formUpdates.valor = valorFormatado;
             console.log('Valor extraído e formatado:', valorFormatado);
+          } else {
+            console.warn('Valor extraído não é um número válido:', fiscalReceiptData.valor);
           }
         } catch (e) {
           console.error('Erro ao processar valor extraído:', e);
-          // Em caso de erro, tentar usar o valor bruto
-          formUpdates.valor = fiscalReceiptData.valor.replace('.', ',');
         }
       }
       
-      // Processar a data de emissão
+      // Processar a data de emissão (garantir formato para o input)
       if (fiscalReceiptData.dataEmissao) {
         try {
-          // Verificar se a data está no formato DD/MM/AAAA
-          if (fiscalReceiptData.dataEmissao.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            const [dia, mes, ano] = fiscalReceiptData.dataEmissao.split('/');
-            // Converter para formato YYYY-MM-DD para o input type="date"
-            formUpdates.data_emissao = `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-            console.log('Data formatada para o formulário:', formUpdates.data_emissao);
+          let dataFormatada = '';
+          
+          // Verificar o formato da data extraída
+          const formatoDD_MM_AAAA = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+          const match = fiscalReceiptData.dataEmissao.match(formatoDD_MM_AAAA);
+          
+          if (match) {
+            // Converter de DD/MM/AAAA para AAAA-MM-DD (formato input)
+            const [_, dia, mes, ano] = match;
+            dataFormatada = `${ano}-${mes}-${dia}`;
+            console.log('Data formatada para input:', dataFormatada);
+          } else if (fiscalReceiptData.dataEmissao.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Já está no formato correto
+            dataFormatada = fiscalReceiptData.dataEmissao;
           } else {
-            // Tentar outros formatos ou usar como está
-            formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
+            console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
+          }
+          
+          if (dataFormatada) {
+            formUpdates.data_emissao = dataFormatada;
           }
         } catch (e) {
           console.error('Erro ao processar data extraída:', e);
-          // Em caso de erro, deixar a data como está
-          formUpdates.data_emissao = fiscalReceiptData.dataEmissao;
         }
       }
       
