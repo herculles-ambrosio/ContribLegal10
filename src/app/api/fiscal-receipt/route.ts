@@ -150,44 +150,34 @@ function extrairNumeroDocumento(html: string): string | undefined {
     
     // Tentar encontrar o número do documento com Cheerio
     let numeroDocumento: string | undefined;
-
-    // Método específico para SEFAZ MG - sabemos que os números são normalmente 9 dígitos
-    // Procurar por número do documento na seção principal (prioritário)
+    
+    // Método 1: Buscar texto com números com 6-9 dígitos relacionados ao documento
     $('*').each((i, el) => {
       if (numeroDocumento) return false;
       
       const text = $(el).text().trim();
-      // Procurar termos específicos relacionados a número do documento
+      // Procurar termos específicos da SEFAZ MG
       if (text.includes('Número') || text.includes('Nº') || text.includes('Documento') || 
-          text.includes('Cupom') || text.includes('SAT')) {
+          text.includes('Cupom') || text.includes('SAT') || text.includes('Nota')) {
         
-        // Verificar no próprio texto
-        const match = text.match(/[\d]{6,9}/);
-        if (match) {
-          numeroDocumento = match[0];
+        // Verificar números no próprio texto
+        const match = text.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
+        if (match && match[1]) {
+          numeroDocumento = match[1];
           console.log(`API - Número do documento encontrado no texto: ${numeroDocumento}`);
           return false;
         }
         
-        // Verificar no elemento pai
+        // Verificar nos elementos irmãos
         const parent = $(el).parent();
-        const parentText = parent.text();
-        const parentMatch = parentText.match(/[\d]{6,9}/);
-        if (parentMatch && parentMatch[0] !== text) {
-          numeroDocumento = parentMatch[0];
-          console.log(`API - Número do documento encontrado no elemento pai: ${numeroDocumento}`);
-          return false;
-        }
-        
-        // Verificar em elementos irmãos
         const siblings = parent.children();
         siblings.each((i, sib) => {
           if (numeroDocumento) return false;
           
           const sibText = $(sib).text().trim();
-          const match = sibText.match(/[\d]{6,9}/);
-          if (match && sibText !== text) {
-            numeroDocumento = match[0];
+          const match = sibText.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
+          if (match && match[1] && $(sib).is(el) === false) {
+            numeroDocumento = match[1];
             console.log(`API - Número do documento encontrado no elemento irmão: ${numeroDocumento}`);
             return false;
           }
@@ -195,25 +185,26 @@ function extrairNumeroDocumento(html: string): string | undefined {
         
         // Verificar nos elementos próximos
         const next = $(el).next();
-        const nextText = next.text().trim();
-        const nextMatch = nextText.match(/[\d]{6,9}/);
-        if (nextMatch) {
-          numeroDocumento = nextMatch[0];
-          console.log(`API - Número do documento encontrado no próximo elemento: ${numeroDocumento}`);
-          return false;
+        if (next.length > 0) {
+          const nextText = next.text().trim();
+          const match = nextText.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
+          if (match && match[1]) {
+            numeroDocumento = match[1];
+            console.log(`API - Número do documento encontrado no próximo elemento: ${numeroDocumento}`);
+            return false;
+          }
         }
       }
     });
     
-    // Se ainda não encontrou, verificar números grandes isolados
+    // Método 2: Procurar elementos HTML que contenham apenas um número com 6-9 dígitos
     if (!numeroDocumento) {
-      // Procurar números isolados no HTML que tenham entre 6 e 10 dígitos
       $('*').each((i, el) => {
         if (numeroDocumento) return false;
         
         const text = $(el).text().trim();
-        // Números isolados
-        if (/^[\d]{6,10}$/.test(text)) {
+        // Números isolados que parecem ser um identificador
+        if (/^\d{6,9}$/.test(text)) {
           numeroDocumento = text;
           console.log(`API - Número do documento encontrado como texto isolado: ${numeroDocumento}`);
           return false;
@@ -221,34 +212,28 @@ function extrairNumeroDocumento(html: string): string | undefined {
       });
     }
     
-    // Se ainda não encontrou, recorrer a padrões regex no HTML completo
+    // Método 3: Usar regex para procurar padrões de número de documento no HTML
     if (!numeroDocumento) {
       const padroes = [
-        // Padrões específicos da SEFAZ MG
-        /COO:\s*([0-9]{6,})/i,
-        /Extrato nº\s*([0-9]{6,})/i,
-        /Número do CF-e-SAT:\s*([0-9]{6,})/i,
-        /Número do Documento:\s*([0-9]{6,})/i,
-        /Número\s*(?:do|da)?\s*(?:Cupom|Nota)?\s*:?\s*([0-9]{6,})/i,
-        /SAT\s*(?:Nº|número|num)?\s*:?\s*([0-9]{6,})/i,
-        /NF(?:e|ce)?\s*(?:Nº|número|num)?\s*:?\s*([0-9]{6,})/i,
-        /Número\s*:?\s*([0-9]{6,})/i,
-        /Nº\s*:?\s*([0-9]{6,})/i,
-        // Atributos comuns em HTML que podem ter o número do documento
-        /documentNumber["':=]\s*["']?([0-9]{6,})/i,
-        /nNF["':=]\s*["']?([0-9]{6,})/i,
-        /cNF["':=]\s*["']?([0-9]{6,})/i,
-        /numeroCupom["':=]\s*["']?([0-9]{6,})/i,
-        /numeroCF["':=]\s*["']?([0-9]{6,})/i,
-        // Último recurso - procurar números grandes no texto
-        /(\d{6,10})/
+        // Padrões comuns para cupons fiscais e notas
+        /COO:\s*(\d{6,9})/i,
+        /Extrato n[ºo°]\s*(\d{6,9})/i,
+        /N[úu]mero do CF-e-SAT:\s*(\d{6,9})/i,
+        /N[úu]mero do Documento:\s*(\d{6,9})/i,
+        /N[úu]mero\s*(?:do|da)?\s*(?:Cupom|Nota|SAT)?\s*:?\s*(\d{6,9})/i,
+        /SAT\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
+        /NF(?:e|ce)?\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
+        /CF(?:e|ce)?\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
+        /Documento\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
+        // Último recurso: procurar por números específicos
+        /(\d{6,9})/
       ];
       
       for (const padrao of padroes) {
         const match = html.match(padrao);
         if (match && match[1]) {
           numeroDocumento = match[1].trim();
-          console.log(`API - Número do documento extraído por regex (padrão ${padrao}): ${numeroDocumento}`);
+          console.log(`API - Número do documento extraído por regex: ${numeroDocumento}`);
           break;
         }
       }
@@ -269,16 +254,16 @@ function extrairValor(html: string): string | undefined {
     // Variável para armazenar o valor encontrado
     let valorEncontrado: string | undefined;
     
-    // Método 1: Procurar por elementos específicos que geralmente contêm o valor
-    // Procurar em divs/spans/tags que tenham classes ou IDs específicos
-    $('*[id*="valor"], *[id*="total"], *[id*="preco"], *[class*="valor"], *[class*="total"], *[class*="preco"]').each((i, el) => {
+    // Método 1: Procurar por elementos que geralmente contêm valores monetários
+    $('[id*="valor"], [id*="total"], [id*="preco"], [class*="valor"], [class*="total"], [class*="preco"]').each((i, el) => {
       if (valorEncontrado) return false;
       
       const text = $(el).text().trim();
-      // Regex para extrair valores monetários (R$ X,XX ou apenas X,XX)
+      // Regex para extrair valores monetários
       const match = text.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
       if (match) {
-        const valor = (match[1] || match[2]).replace(/\./g, '').replace(',', '.');
+        const valorStr = match[1] || match[2];
+        const valor = valorStr.replace(/\./g, '').replace(',', '.');
         if (!isNaN(parseFloat(valor))) {
           valorEncontrado = valor;
           console.log(`API - Valor encontrado em elemento específico: ${valorEncontrado}`);
@@ -287,26 +272,17 @@ function extrairValor(html: string): string | undefined {
       }
     });
     
-    // Método 2: Procurar por labels/texto específicos
+    // Método 2: Procurar por textos que mencionam valores
     if (!valorEncontrado) {
       const labelsValor = [
-        'VALOR PAGO',
-        'VALOR TOTAL',
-        'Valor pago',
-        'Valor Total',
-        'Valor do Documento',
-        'Valor da Nota',
-        'Total do documento',
-        'TOTAL',
-        'Total',
-        'Valor final',
-        'Valor'
+        'VALOR PAGO', 'VALOR TOTAL', 'TOTAL R$', 'TOTAL:', 
+        'Valor pago', 'Valor Total', 'Valor do Documento', 'Valor da Nota',
+        'Total do documento', 'TOTAL', 'Total:', 'Valor:'
       ];
       
       for (const label of labelsValor) {
         if (valorEncontrado) break;
         
-        // Procurar elementos que contenham o label
         $('*').each((i, el) => {
           if (valorEncontrado) return false;
           
@@ -315,7 +291,8 @@ function extrairValor(html: string): string | undefined {
             // Verificar no próprio texto
             const match = text.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
             if (match) {
-              const valor = (match[1] || match[2]).replace(/\./g, '').replace(',', '.');
+              const valorStr = match[1] || match[2];
+              const valor = valorStr.replace(/\./g, '').replace(',', '.');
               if (!isNaN(parseFloat(valor))) {
                 valorEncontrado = valor;
                 console.log(`API - Valor encontrado junto ao label: ${valorEncontrado}`);
@@ -323,89 +300,47 @@ function extrairValor(html: string): string | undefined {
               }
             }
             
-            // Verificar no elemento pai
+            // Verificar em elementos próximos
             const parent = $(el).parent();
-            const parentText = parent.text().trim();
-            const parentMatch = parentText.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-            if (parentMatch && !parentText.includes(text)) {
-              const valor = (parentMatch[1] || parentMatch[2]).replace(/\./g, '').replace(',', '.');
-              if (!isNaN(parseFloat(valor))) {
-                valorEncontrado = valor;
-                console.log(`API - Valor encontrado no elemento pai: ${valorEncontrado}`);
-                return false;
-              }
-            }
-            
-            // Verificar em irmãos
-            const siblings = parent.children();
-            siblings.each((i, sib) => {
-              if (valorEncontrado) return false;
+            parent.find('*').each((i, child) => {
+              if (valorEncontrado || $(child).is(el)) return;
               
-              const sibText = $(sib).text().trim();
-              if (sibText !== text) {
-                const match = sibText.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-                if (match) {
-                  const valor = (match[1] || match[2]).replace(/\./g, '').replace(',', '.');
-                  if (!isNaN(parseFloat(valor))) {
-                    valorEncontrado = valor;
-                    console.log(`API - Valor encontrado em elemento irmão: ${valorEncontrado}`);
-                    return false;
-                  }
+              const childText = $(child).text().trim();
+              const match = childText.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
+              if (match) {
+                const valorStr = match[1] || match[2];
+                const valor = valorStr.replace(/\./g, '').replace(',', '.');
+                if (!isNaN(parseFloat(valor))) {
+                  valorEncontrado = valor;
+                  console.log(`API - Valor encontrado em elemento relacionado: ${valorEncontrado}`);
+                  return false;
                 }
               }
             });
-            
-            // Verificar nos elementos próximos
-            const next = $(el).next();
-            const nextText = next.text().trim();
-            const nextMatch = nextText.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-            if (nextMatch) {
-              const valor = (nextMatch[1] || nextMatch[2]).replace(/\./g, '').replace(',', '.');
-              if (!isNaN(parseFloat(valor))) {
-                valorEncontrado = valor;
-                console.log(`API - Valor encontrado no próximo elemento: ${valorEncontrado}`);
-                return false;
-              }
-            }
           }
         });
       }
     }
     
-    // Método 3: Procurar valores monetários isolados (último recurso)
+    // Método 3: Procurar por qualquer valor monetário no documento
     if (!valorEncontrado) {
-      // Procurar valores com formato monetário brasileiro
+      const htmlText = $.text();
       const padroes = [
-        // Prioridade para valores monetários precisos
-        /valor\s*(?:pago|total)?.*?R\$\s*([0-9.,]+)/i,
-        /total.*?R\$\s*([0-9.,]+)/i,
-        /R\$\s*([0-9]+[,.][0-9]{2})/,   // R$ seguido de X,XX ou X.XX
-        /([0-9]+[,.][0-9]{2})\s*R\$/,   // X,XX ou X.XX seguido de R$
-        /TOTAL:?\s*R?\$?\s*([0-9.,]+)/i,
-        // Atributos em HTML/JSON
-        /"valor(?:Total|Pago)?"\s*:\s*"?([0-9.,]+)"?/i,
-        /'valor(?:Total|Pago)?'\s*:\s*'?([0-9.,]+)'?/i,
-        /valorNF(?:e|ce)?["':=]\s*["']?([0-9.,]+)/i,
-        // Último recurso - valores monetários genéricos
-        /R\$\s*([0-9.,]+)/,
-        /([0-9]+[,.][0-9]{2})/          // Qualquer número com 2 casas decimais
+        /VALOR\s*PAGO\s*:?\s*R?\$?\s*([0-9.,]+)/i,
+        /VALOR\s*TOTAL\s*:?\s*R?\$?\s*([0-9.,]+)/i,
+        /TOTAL\s*:?\s*R?\$?\s*([0-9.,]+)/i,
+        /R\$\s*([0-9]+[,.][0-9]{2})/,
+        /([0-9]+[,.][0-9]{2})/
       ];
       
       for (const padrao of padroes) {
-        const match = html.match(padrao);
+        const match = htmlText.match(padrao);
         if (match && match[1]) {
-          // Normalizar formato (remover pontos de milhar e usar ponto para decimal)
-          let valor = match[1].trim().replace(/\s/g, '');
-          
-          // Verificar se o valor tem formato brasileiro (vírgula para decimais)
-          if (valor.includes(',')) {
-            valor = valor.replace(/\./g, '').replace(',', '.');
-          }
-          
-          // Validar como número
+          const valorStr = match[1].trim();
+          const valor = valorStr.replace(/\./g, '').replace(',', '.');
           if (!isNaN(parseFloat(valor))) {
             valorEncontrado = valor;
-            console.log(`API - Valor extraído por regex (padrão ${padrao}): ${valorEncontrado}`);
+            console.log(`API - Valor extraído do texto: ${valorEncontrado}`);
             break;
           }
         }
@@ -427,23 +362,15 @@ function extrairDataEmissao(html: string): string | undefined {
     // Variável para armazenar a data encontrada
     let dataEncontrada: string | undefined;
     
-    // Método 1: Procurar labels específicos com Cheerio
+    // Método 1: Procurar por elementos que mencionam datas
     const labelsData = [
-      'Data de Emissão',
-      'Data Emissão',
-      'Emissão',
-      'Data',
-      'Dt. Emissão',
-      'DT. EMISSÃO',
-      'DATA EMISSÃO',
-      'DATA DE EMISSÃO',
-      'DATA'
+      'Data de Emissão', 'Data Emissão', 'Emissão', 'Data',
+      'DATA DE EMISSÃO', 'DATA EMISSÃO', 'EMISSÃO', 'DATA'
     ];
     
     for (const label of labelsData) {
       if (dataEncontrada) break;
       
-      // Procurar elementos que contenham o label
       $('*').each((i, el) => {
         if (dataEncontrada) return false;
         
@@ -457,67 +384,40 @@ function extrairDataEmissao(html: string): string | undefined {
             return false;
           }
           
-          // Verificar no elemento pai
+          // Verificar em elementos próximos
           const parent = $(el).parent();
-          const parentText = parent.text().trim();
-          const parentMatch = parentText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
-          if (parentMatch && !text.includes(parentMatch[0])) {
-            dataEncontrada = normalizarData(parentMatch[0]);
-            console.log(`API - Data encontrada no elemento pai: ${dataEncontrada}`);
-            return false;
-          }
-          
-          // Verificar em irmãos
-          const siblings = parent.children();
-          siblings.each((i, sib) => {
-            if (dataEncontrada) return false;
+          parent.find('*').each((i, child) => {
+            if (dataEncontrada || $(child).is(el)) return;
             
-            const sibText = $(sib).text().trim();
-            if (sibText !== text) {
-              const match = sibText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
-              if (match) {
-                dataEncontrada = normalizarData(match[0]);
-                console.log(`API - Data encontrada em elemento irmão: ${dataEncontrada}`);
-                return false;
-              }
+            const childText = $(child).text().trim();
+            const match = childText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
+            if (match) {
+              dataEncontrada = normalizarData(match[0]);
+              console.log(`API - Data encontrada em elemento relacionado: ${dataEncontrada}`);
+              return false;
             }
           });
-          
-          // Verificar nos elementos próximos
-          const next = $(el).next();
-          const nextText = next.text().trim();
-          const nextMatch = nextText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
-          if (nextMatch) {
-            dataEncontrada = normalizarData(nextMatch[0]);
-            console.log(`API - Data encontrada no próximo elemento: ${dataEncontrada}`);
-            return false;
-          }
         }
       });
     }
     
-    // Método 2: Procurar por datas completas no documento
+    // Método 2: Procurar qualquer data no documento
     if (!dataEncontrada) {
-      // Procurar datas formatadas em qualquer lugar do HTML
+      const htmlText = $.text();
       const padroes = [
-        // Padrões para data brasileira (DD/MM/AAAA)
-        /Data\s*(?:de)?\s*Emissão\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        /Emissão\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        /Dt\.\s*Emissão\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
+        /Data\s*(?:de)?\s*Emiss[ãa]o\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
+        /Emiss[ãa]o\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
         /Data\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        // Padrões para data ISO (AAAA-MM-DD)
-        /data(?:Emissao)?["':=]\s*["']?(\d{4}-\d{2}-\d{2})/i,
         /dhEmi["':=]\s*["']?(\d{4}-\d{2}-\d{2})/i,
-        // Último recurso - procurar qualquer data formatada no texto
         /(\d{2}\/\d{2}\/\d{4})/,
         /(\d{4}-\d{2}-\d{2})/
       ];
       
       for (const padrao of padroes) {
-        const match = html.match(padrao);
+        const match = htmlText.match(padrao);
         if (match && match[1]) {
           dataEncontrada = normalizarData(match[1]);
-          console.log(`API - Data extraída por regex (padrão ${padrao}): ${dataEncontrada}`);
+          console.log(`API - Data extraída do texto: ${dataEncontrada}`);
           break;
         }
       }
