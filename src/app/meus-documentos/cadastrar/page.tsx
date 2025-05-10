@@ -192,7 +192,7 @@ export default function CadastrarDocumento() {
     console.log('QR Code normalizado:', normalizedResult);
     
     // SEMPRE aceitar o QR code, independente do conteúdo
-    // Armazena temporariamente o valor lido no campo número do documento
+    // Armazena o próprio link como valor inicial para o número do documento
     setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
     
     // Fechar o scanner automaticamente
@@ -205,7 +205,7 @@ export default function CadastrarDocumento() {
     try {
       // Tentar extrair dados adicionais do cupom fiscal
       const fiscalReceiptData = await extractDataFromFiscalReceipt(normalizedResult);
-      console.log('Dados extraídos do cupom fiscal:', fiscalReceiptData);
+      console.log('Dados extraídos completos:', fiscalReceiptData);
       
       // Esconder modal de carregamento
       setIsExtracting(false);
@@ -213,18 +213,50 @@ export default function CadastrarDocumento() {
       // Atualizar os campos com os dados extraídos (se houver)
       const formUpdates: any = {};
 
-      // Se extraiu o número do documento, usar este valor em vez do link
+      // Processar o número do documento (prioridade máxima)
       if (fiscalReceiptData.numeroDocumento) {
-        formUpdates.numero_documento = fiscalReceiptData.numeroDocumento;
-        console.log('Número do documento extraído:', fiscalReceiptData.numeroDocumento);
+        // Verificar se é um número de documento válido (entre 6 e 9 dígitos numéricos)
+        const numeroLimpo = fiscalReceiptData.numeroDocumento.replace(/\D/g, '');
+        if (numeroLimpo.length >= 6 && numeroLimpo.length <= 9) {
+          formUpdates.numero_documento = numeroLimpo;
+          console.log('Número do documento extraído e limpo:', numeroLimpo);
+        } else if (fiscalReceiptData.numeroDocumento.length >= 6 && fiscalReceiptData.numeroDocumento.length <= 9) {
+          // Se não estiver no formato esperado, mas tiver comprimento adequado, usar o valor original
+          formUpdates.numero_documento = fiscalReceiptData.numeroDocumento;
+          console.log('Número do documento extraído com sucesso:', fiscalReceiptData.numeroDocumento);
+        } else {
+          console.warn('Número do documento extraído tem formato inválido:', fiscalReceiptData.numeroDocumento);
+        }
       }
       
-      // Processar o valor (garantir formato brasileiro)
+      // Processar o valor do cupom
       if (fiscalReceiptData.valor) {
         try {
           // Garantir que estamos lidando com um número
-          const valor = fiscalReceiptData.valor.toString().replace(',', '.');
-          const valorNumerico = parseFloat(valor);
+          let valorNumerico = 0;
+          
+          // Verificar o formato do valor recebido e converter adequadamente
+          if (typeof fiscalReceiptData.valor === 'string') {
+            // Se estiver no formato brasileiro (vírgula como separador decimal)
+            if (fiscalReceiptData.valor.includes(',')) {
+              // Remover pontos de milhar e substituir vírgula por ponto
+              valorNumerico = parseFloat(fiscalReceiptData.valor.replace(/\./g, '').replace(',', '.'));
+            } 
+            // Se estiver no formato americano (ponto como separador decimal)
+            else if (fiscalReceiptData.valor.includes('.')) {
+              valorNumerico = parseFloat(fiscalReceiptData.valor);
+            } 
+            // Se for apenas números, assumir valor em centavos
+            else if (/^\d+$/.test(fiscalReceiptData.valor)) {
+              // Converter de centavos para reais
+              valorNumerico = parseInt(fiscalReceiptData.valor, 10) / 100;
+            } else {
+              // Tentar converter diretamente
+              valorNumerico = parseFloat(fiscalReceiptData.valor);
+            }
+          } else if (typeof fiscalReceiptData.valor === 'number') {
+            valorNumerico = fiscalReceiptData.valor;
+          }
           
           if (!isNaN(valorNumerico)) {
             // Formatar para exibição no formato brasileiro
@@ -234,7 +266,7 @@ export default function CadastrarDocumento() {
             });
             
             formUpdates.valor = valorFormatado;
-            console.log('Valor extraído e formatado:', valorFormatado);
+            console.log('Valor extraído e formatado:', valorFormatado, 'Original:', fiscalReceiptData.valor);
           } else {
             console.warn('Valor extraído não é um número válido:', fiscalReceiptData.valor);
           }
@@ -243,61 +275,69 @@ export default function CadastrarDocumento() {
         }
       }
       
-      // Processar a data de emissão (garantir formato para o input)
+      // Processar a data de emissão
       if (fiscalReceiptData.dataEmissao) {
         try {
-          let dataFormatada = '';
+          // Verificar diferentes formatos de data
+          let dia, mes, ano;
           
-          // Verificar o formato da data extraída
-          const formatoDD_MM_AAAA = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-          const match = fiscalReceiptData.dataEmissao.match(formatoDD_MM_AAAA);
+          // Formato brasileiro DD/MM/AAAA
+          const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+          const matchBR = fiscalReceiptData.dataEmissao.match(formatoBR);
           
-          if (match) {
-            // Converter de DD/MM/AAAA para AAAA-MM-DD (formato input)
-            const [_, dia, mes, ano] = match;
-            dataFormatada = `${ano}-${mes}-${dia}`;
-            console.log('Data formatada para input:', dataFormatada);
-          } else if (fiscalReceiptData.dataEmissao.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            // Já está no formato correto
-            dataFormatada = fiscalReceiptData.dataEmissao;
+          if (matchBR) {
+            // Usando desestruturação com uma variável que não será usada (underscore)
+            const [unused, diaBR, mesBR, anoBR] = matchBR;
+            formUpdates.data_emissao = `${anoBR}-${mesBR}-${diaBR}`;
+            console.log('Data formatada para o campo (BR):', formUpdates.data_emissao);
           } else {
-            console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
-          }
-          
-          if (dataFormatada) {
-            formUpdates.data_emissao = dataFormatada;
+            // Tentar outros formatos (DD-MM-AAAA, AAAA-MM-DD)
+            const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
+            const formatoISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+            
+            const matchTraco = fiscalReceiptData.dataEmissao.match(formatoTraco);
+            const matchISO = fiscalReceiptData.dataEmissao.match(formatoISO);
+            
+            if (matchTraco) {
+              const [unused, diaTraco, mesTraco, anoTraco] = matchTraco;
+              formUpdates.data_emissao = `${anoTraco}-${mesTraco}-${diaTraco}`;
+              console.log('Data formatada para o campo (traço):', formUpdates.data_emissao);
+            } else if (matchISO) {
+              const [unused, anoISO, mesISO, diaISO] = matchISO;
+              formUpdates.data_emissao = `${anoISO}-${mesISO}-${diaISO}`;
+              console.log('Data formatada para o campo (ISO):', formUpdates.data_emissao);
+            } else {
+              console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
+            }
           }
         } catch (e) {
-          console.error('Erro ao processar data extraída:', e);
+          console.error('Erro ao processar data:', e);
         }
       }
       
       // Verificar se conseguimos extrair algum dado
       const fieldsExtracted = [];
-      if (fiscalReceiptData.numeroDocumento) fieldsExtracted.push('número do documento');
-      if (fiscalReceiptData.valor) fieldsExtracted.push('valor');
-      if (fiscalReceiptData.dataEmissao) fieldsExtracted.push('data');
+      if (formUpdates.numero_documento && formUpdates.numero_documento !== normalizedResult) {
+        fieldsExtracted.push('número do documento');
+      }
+      if (formUpdates.valor) fieldsExtracted.push('valor');
+      if (formUpdates.data_emissao) fieldsExtracted.push('data');
       
       // Atualizar o formulário com os dados extraídos
-      if (Object.keys(formUpdates).length > 0) {
-        setFormData(prev => ({ ...prev, ...formUpdates }));
-        
-        if (fieldsExtracted.length > 0) {
-          toast.success(`QR Code lido e dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
-        } else {
-          toast.success('QR Code lido! Verifique os dados preenchidos.');
-        }
-      } else if (fiscalReceiptData.error) {
-        console.error('Erro na extração de dados:', fiscalReceiptData.error);
-        toast.error('Erro ao extrair dados. Por favor, preencha os campos manualmente.');
+      setFormData(prev => ({ ...prev, ...formUpdates }));
+      
+      // Mostrar feedback ao usuário
+      if (fieldsExtracted.length > 0) {
+        toast.success(`Dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
       } else {
-        toast.success('QR Code lido! Por favor, verifique e complete os campos necessários.');
+        toast.success('QR Code lido! Não foi possível extrair dados adicionais. Preencha os campos manualmente.');
       }
+      
     } catch (extractionError) {
       // Esconder modal de carregamento em caso de erro
       setIsExtracting(false);
       console.error('Erro ao extrair dados:', extractionError);
-      toast.error('Falha ao extrair dados do QR code. Por favor, preencha os campos manualmente.');
+      toast.error('Falha ao extrair dados do QR code. Preencha manualmente.');
     }
   };
 

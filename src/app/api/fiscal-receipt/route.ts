@@ -47,12 +47,41 @@ export async function POST(request: NextRequest) {
     const normalizedLink = qrCodeLink.trim();
     console.log('API - Link normalizado recebido:', normalizedLink);
     
-    // Aceitar qualquer input como válido
-    console.log('API - Processando QR code (formato flexível):', normalizedLink);
+    // Verificar se o próprio link contém informações úteis (muitos QR codes da SEFAZ MG incluem dados no próprio link)
+    let numeroDocumento = '';
+    let valor = '';
+    let dataEmissao = '';
+    
+    // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
+    try {
+      // Padrões comuns em URLs de QR codes fiscais da SEFAZ MG
+      const chaveAcessoMatch = normalizedLink.match(/(?:chNFe=|nfeKey=|chave=)([0-9]{44})/i);
+      if (chaveAcessoMatch && chaveAcessoMatch[1]) {
+        // Se encontrou chave de acesso NFe (44 dígitos), extrair o número do documento (últimos 8 dígitos)
+        numeroDocumento = chaveAcessoMatch[1].slice(-8);
+        console.log('API - Número do documento extraído da chave de acesso:', numeroDocumento);
+      }
+      
+      // Tentar extrair valor do link
+      const valorMatch = normalizedLink.match(/(?:vNF=|valorNF=|valor=)([0-9,.]+)/i);
+      if (valorMatch && valorMatch[1]) {
+        valor = valorMatch[1].replace(',', '.');
+        console.log('API - Valor extraído do link:', valor);
+      }
+      
+      // Tentar extrair data do link
+      const dataMatch = normalizedLink.match(/(?:dhEmi=|dtEmissao=|data=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i);
+      if (dataMatch && dataMatch[1]) {
+        dataEmissao = dataMatch[1].replace(/-/g, '/');
+        console.log('API - Data extraída do link:', dataEmissao);
+      }
+    } catch (linkExtractionError) {
+      console.error('API - Erro ao extrair dados do link:', linkExtractionError);
+    }
 
     // Aumentar timeout para URLs lentas
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 segundos
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
     
     let url = normalizedLink;
     
@@ -86,7 +115,16 @@ export async function POST(request: NextRequest) {
       if (!response.ok) {
         console.error(`API - Erro ao acessar página: ${response.status} ${response.statusText}`);
         
-        // Ainda assim retornar um objeto para evitar erro, mesmo que sem dados
+        // Se já tiver extraído algum dado do próprio link, retornar esses dados
+        if (numeroDocumento || valor || dataEmissao) {
+          console.log('API - Usando dados extraídos do link, pois a página não pôde ser acessada');
+          return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+            status: 200,
+            headers: responseHeaders,
+          });
+        }
+        
+        // Caso contrário, retornar mensagem sem dados
         return NextResponse.json(
           { message: 'QR Code processado, sem dados extraídos' },
           { status: 200, headers: responseHeaders }
@@ -97,15 +135,311 @@ export async function POST(request: NextRequest) {
       const html = await response.text();
       console.log(`API - Página acessada com sucesso (${html.length} bytes)`);
       
-      // Tentar extrair os dados da página - início com regex básicos
+      // Carregar o HTML com Cheerio para análise
+      const $ = cheerio.load(html);
+      
+      // EXTRAÇÃO DIRETA ESPECÍFICA PARA SEFAZ MG
+      // ========================================
+      
+      // 1. Procurar pelo número do documento (se ainda não encontrado no link)
+      if (!numeroDocumento) {
+        // Extrair número do documento utilizando seletores específicos comuns da SEFAZ MG
+        // Seletor específico para NFC-e da SEFAZ MG
+        $('.nfce-container .nfce-info, .box-info .numero-nota, .infoDadosNfe .numero, .box-nfce .dado-numero, .info-cupom .coo').each((_, el) => {
+          const text = $(el).text().trim();
+          const match = text.match(/(?:\d{6,9})|(?:N[Ff][Cc][Ee]?\s*[#:]?\s*(\d+))|(?:[Cc][Oo][Oo]\s*[:]?\s*(\d+))/);
+          if (match) {
+            numeroDocumento = match[1] || match[2] || match[0];
+            console.log('API - Número do documento encontrado em seletor específico:', numeroDocumento);
+            return false; // Sair do loop
+          }
+        });
+        
+        // Busca geral por elementos que podem conter o número do documento
+        if (!numeroDocumento) {
+          $('*').each((_, el) => {
+            const text = $(el).text().trim();
+            
+            // Verificar padrões comuns específicos da SEFAZ MG
+            if (
+              (text.includes('Número') || text.includes('Nota') || text.includes('Cupom') || 
+               text.includes('NFC') || text.includes('SAT') || text.includes('ECF') || 
+               text.includes('COO') || text.includes('Extrato'))
+            ) {
+              // Procurar número próximo ao texto identificado
+              let numeroMatch = text.match(/(?:N[Ff][Cc][Ee]?\s*[#:]?\s*(\d{6,9}))|(?:Nota\s*[Ff]iscal\s*[#:]?\s*(\d{6,9}))|(?:Cupom\s*[Ff]iscal\s*[#:]?\s*(\d{6,9}))|(?:SAT\s*[#:]?\s*(\d{6,9}))|(?:ECF\s*[#:]?\s*(\d{6,9}))|(?:COO\s*[:]?\s*(\d{6,9}))|(?:Extrato\s*[#:]?\s*(\d{6,9}))|(?:Número\s*[#:]?\s*(\d{6,9}))/i);
+              
+              if (!numeroMatch) {
+                // Tentar um padrão mais simples
+                numeroMatch = text.match(/\b(\d{6,9})\b/);
+              }
+              
+              if (numeroMatch) {
+                // Pegar o primeiro grupo capturado ou o match completo
+                for (let i = 1; i < numeroMatch.length; i++) {
+                  if (numeroMatch[i]) {
+                    numeroDocumento = numeroMatch[i];
+                    console.log('API - Número documento encontrado em texto:', numeroDocumento);
+                    return false; // Sair do loop
+                  }
+                }
+                
+                if (!numeroDocumento && numeroMatch[0] && /^\d{6,9}$/.test(numeroMatch[0])) {
+                  numeroDocumento = numeroMatch[0];
+                  console.log('API - Número documento encontrado em texto (match completo):', numeroDocumento);
+                  return false;
+                }
+              }
+              
+              // Verificar no elemento pai ou próximo
+              if (!numeroDocumento) {
+                const parent = $(el).parent();
+                const parentText = parent.text().trim();
+                const parentMatch = parentText.match(/\b(\d{6,9})\b/);
+                if (parentMatch && parentMatch[1] && !text.includes(parentMatch[1])) {
+                  numeroDocumento = parentMatch[1];
+                  console.log('API - Número documento encontrado em elemento pai:', numeroDocumento);
+                  return false;
+                }
+                
+                // Verificar próximo elemento
+                const next = $(el).next();
+                if (next.length) {
+                  const nextText = next.text().trim();
+                  const nextMatch = nextText.match(/\b(\d{6,9})\b/);
+                  if (nextMatch && nextMatch[1]) {
+                    numeroDocumento = nextMatch[1];
+                    console.log('API - Número documento encontrado em próximo elemento:', numeroDocumento);
+                    return false;
+                  }
+                }
+              }
+            }
+          });
+        }
+        
+        // Se ainda não encontrou, procurar no HTML completo
+        if (!numeroDocumento) {
+          const documentPatterns = [
+            /Cupom\s*[Ff]iscal\s*[Ee]letrônico.*?(\d{6,9})/i,
+            /SAT.*?(\d{6,9})/i,
+            /NFCe.*?(\d{6,9})/i,
+            /Extrato\s*(?:n[°º]|num|número)\s*(\d{6,9})/i,
+            /NF[Ce]?\s*(?:n[°º]|num|número)\s*(\d{6,9})/i,
+            /COO\s*[:]\s*(\d{6,9})/i,
+            /ECF\s*[:]\s*(\d{6,9})/i,
+            /Número\s*(?:do\s*)?(?:documento|cupom|nota)\s*[:]\s*(\d{6,9})/i,
+            /\b(\d{9})\b/, // Números com exatamente 9 dígitos
+            /\b(\d{8})\b/, // Números com exatamente 8 dígitos
+            /\b(\d{7})\b/, // Números com exatamente 7 dígitos
+            /\b(\d{6})\b/  // Números com exatamente 6 dígitos
+          ];
+          
+          for (const pattern of documentPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+              numeroDocumento = match[1];
+              console.log('API - Número documento encontrado com regex:', numeroDocumento);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 2. Procurar o valor do cupom fiscal (se ainda não encontrado no link)
+      if (!valor) {
+        // Usando seletores específicos para valores em cupons fiscais
+        $('.valor-total, .total-nota, .nfce-valor-total, .imposto-texto, .info-valor').each((_, el) => {
+          const text = $(el).text().trim();
+          const match = text.match(/R\$\s*([\d.,]+)/);
+          if (match && match[1]) {
+            valor = match[1].replace(/\./g, '').replace(',', '.');
+            console.log('API - Valor encontrado em seletor específico:', valor);
+            return false;
+          }
+        });
+        
+        // Se não encontrou com seletores específicos, procurar elementos com texto relacionado
+        if (!valor) {
+          $('*').each((_, el) => {
+            if (valor) return false; // Já encontramos, sair
+            
+            const text = $(el).text().trim();
+            
+            // Verificar padrões específicos para o valor
+            if (
+              (text.includes('Total') || text.includes('TOTAL') || 
+               text.includes('Valor') || text.includes('VALOR') ||
+               text.includes('R$'))
+            ) {
+              // Tentar extrair da mesma linha/elemento
+              const valorMatch = text.match(/R\$\s*([\d.,]+)/);
+              if (valorMatch && valorMatch[1]) {
+                valor = valorMatch[1].replace(/\./g, '').replace(',', '.');
+                console.log('API - Valor encontrado em texto:', valor);
+                return false;
+              }
+              
+              // Procurar valor numérico direto (sem R$)
+              if (!valor && /TOTAL|Total|VALOR|Valor/.test(text)) {
+                const valorNumericoMatch = text.match(/[\d.,]+$/);
+                if (valorNumericoMatch && valorNumericoMatch[0]) {
+                  valor = valorNumericoMatch[0].replace(/\./g, '').replace(',', '.');
+                  console.log('API - Valor numérico encontrado em texto:', valor);
+                  return false;
+                }
+              }
+              
+              // Verificar no próximo elemento
+              if (!valor) {
+                const next = $(el).next();
+                if (next.length) {
+                  const nextText = next.text().trim();
+                  const nextMatch = nextText.match(/R\$\s*([\d.,]+)|([\d.,]+)/);
+                  if (nextMatch && (nextMatch[1] || nextMatch[2])) {
+                    valor = (nextMatch[1] || nextMatch[2]).replace(/\./g, '').replace(',', '.');
+                    console.log('API - Valor encontrado em próximo elemento:', valor);
+                    return false;
+                  }
+                }
+              }
+              
+              // Verificar elementos próximos dentro do mesmo pai
+              if (!valor) {
+                const parent = $(el).parent();
+                parent.find('*').each((_, child) => {
+                  if (valor || $(child).is(el)) return;
+                  
+                  const childText = $(child).text().trim();
+                  const childMatch = childText.match(/R\$\s*([\d.,]+)|([\d.,]+)/);
+                  if (childMatch && (childMatch[1] || childMatch[2])) {
+                    valor = (childMatch[1] || childMatch[2]).replace(/\./g, '').replace(',', '.');
+                    console.log('API - Valor encontrado em elemento irmão:', valor);
+                    return false;
+                  }
+                });
+              }
+            }
+          });
+        }
+        
+        // Se ainda não encontrou o valor, procurar na página toda
+        if (!valor) {
+          const valorPatterns = [
+            /VALOR\s*TOTAL\s*(?:R\$)?\s*([\d.,]+)/i,
+            /TOTAL\s*(?:R\$)?\s*([\d.,]+)/i,
+            /VALOR\s*PAGO\s*(?:R\$)?\s*([\d.,]+)/i,
+            /VALOR\s*(?:R\$)?\s*([\d.,]+)/i,
+            /TOTAL:?\s*(?:R\$)?\s*([\d.,]+)/i,
+            /R\$\s*([\d.,]+)/i,
+            /\b([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})\b/i // Padrão numérico com vírgula para decimais
+          ];
+          
+          for (const pattern of valorPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+              valor = match[1].replace(/\./g, '').replace(',', '.');
+              console.log('API - Valor encontrado com regex:', valor);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 3. Procurar a data de emissão (se ainda não encontrada no link)
+      if (!dataEmissao) {
+        // Usando seletores específicos para datas em cupons fiscais
+        $('.data-emissao, .nfce-data, .info-data, .data-nota').each((_, el) => {
+          const text = $(el).text().trim();
+          const match = text.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
+          if (match) {
+            dataEmissao = (match[1] || match[2] || match[3]).replace(/\./g, '/').replace(/-/g, '/');
+            console.log('API - Data encontrada em seletor específico:', dataEmissao);
+            return false;
+          }
+        });
+        
+        // Busca geral por datas
+        if (!dataEmissao) {
+          $('*').each((_, el) => {
+            if (dataEmissao) return false; // Já encontramos, sair
+            
+            const text = $(el).text().trim();
+            
+            // Verificar padrões específicos para a data
+            if (
+              (text.includes('Data') || text.includes('DATA') || 
+               text.includes('Emissão') || text.includes('EMISSÃO') ||
+               text.includes('EMITIDO') || text.includes('Emitido'))
+            ) {
+              // Procurar no próprio texto
+              const dataMatch = text.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
+              if (dataMatch) {
+                dataEmissao = (dataMatch[1] || dataMatch[2] || dataMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
+                console.log('API - Data encontrada em texto:', dataEmissao);
+                return false;
+              }
+              
+              // Verificar no próximo elemento
+              const next = $(el).next();
+              if (next.length) {
+                const nextText = next.text().trim();
+                const nextMatch = nextText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
+                if (nextMatch) {
+                  dataEmissao = (nextMatch[1] || nextMatch[2] || nextMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
+                  console.log('API - Data encontrada em próximo elemento:', dataEmissao);
+                  return false;
+                }
+              }
+              
+              // Verificar elementos próximos dentro do mesmo pai
+              const parent = $(el).parent();
+              parent.find('*').each((_, child) => {
+                if (dataEmissao || $(child).is(el)) return;
+                
+                const childText = $(child).text().trim();
+                const childMatch = childText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
+                if (childMatch) {
+                  dataEmissao = (childMatch[1] || childMatch[2] || childMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
+                  console.log('API - Data encontrada em elemento irmão:', dataEmissao);
+                  return false;
+                }
+              });
+            }
+          });
+        }
+        
+        // Se ainda não encontrou a data, procurar na página toda
+        if (!dataEmissao) {
+          const dataPatterns = [
+            /Data\s*(?:de)?\s*Emissão:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+            /Emissão:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+            /Data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+            /Emitido\s*(?:em|dia)?:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+            /(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i  // Qualquer data em formato DD/MM/AAAA
+          ];
+          
+          for (const pattern of dataPatterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+              dataEmissao = match[1].replace(/\./g, '/').replace(/-/g, '/');
+              console.log('API - Data encontrada com regex:', dataEmissao);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Montar objeto com os resultados encontrados
       const dados = {
-        numeroDocumento: extrairNumeroDocumento(html),
-        valor: extrairValor(html),
-        dataEmissao: extrairDataEmissao(html),
+        numeroDocumento,
+        valor,
+        dataEmissao
       };
       
-      console.log('API - Dados extraídos:', dados);
+      console.log('API - Dados extraídos finais:', dados);
       
+      // Retornar os dados encontrados, mesmo que alguns estejam vazios
       return NextResponse.json(dados, {
         status: 200,
         headers: responseHeaders,
@@ -118,6 +452,16 @@ export async function POST(request: NextRequest) {
       // Verificar se é um erro de timeout
       if (error instanceof Error && error.name === 'AbortError') {
         console.error('API - Timeout na requisição para o site da SEFAZ');
+        
+        // Se já tiver extraído algum dado do próprio link, retornar esses dados
+        if (numeroDocumento || valor || dataEmissao) {
+          console.log('API - Usando dados extraídos do link, pois houve timeout na requisição');
+          return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+            status: 200,
+            headers: responseHeaders,
+          });
+        }
+        
         return NextResponse.json(
           { message: 'QR Code processado, sem dados extraídos' },
           { status: 200, headers: responseHeaders }
@@ -125,6 +469,15 @@ export async function POST(request: NextRequest) {
       }
 
       console.error('API - Erro ao processar a página do cupom fiscal:', error);
+      
+      // Se já tiver extraído algum dado do próprio link, retornar esses dados
+      if (numeroDocumento || valor || dataEmissao) {
+        console.log('API - Usando dados extraídos do link, pois houve erro ao processar página');
+        return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+          status: 200,
+          headers: responseHeaders,
+        });
+      }
       
       // Retornar um objeto para evitar erro, mesmo que sem dados
       return NextResponse.json(
@@ -140,309 +493,4 @@ export async function POST(request: NextRequest) {
       { status: 200, headers: {...corsHeaders} }
     );
   }
-}
-
-// Função para extrair o número do documento
-function extrairNumeroDocumento(html: string): string | undefined {
-  try {
-    // Carregar o HTML com Cheerio para análise mais precisa
-    const $ = cheerio.load(html);
-    
-    // Tentar encontrar o número do documento com Cheerio
-    let numeroDocumento: string | undefined;
-    
-    // Método 1: Buscar texto com números com 6-9 dígitos relacionados ao documento
-    $('*').each((i, el) => {
-      if (numeroDocumento) return false;
-      
-      const text = $(el).text().trim();
-      // Procurar termos específicos da SEFAZ MG
-      if (text.includes('Número') || text.includes('Nº') || text.includes('Documento') || 
-          text.includes('Cupom') || text.includes('SAT') || text.includes('Nota')) {
-        
-        // Verificar números no próprio texto
-        const match = text.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
-        if (match && match[1]) {
-          numeroDocumento = match[1];
-          console.log(`API - Número do documento encontrado no texto: ${numeroDocumento}`);
-          return false;
-        }
-        
-        // Verificar nos elementos irmãos
-        const parent = $(el).parent();
-        const siblings = parent.children();
-        siblings.each((i, sib) => {
-          if (numeroDocumento) return false;
-          
-          const sibText = $(sib).text().trim();
-          const match = sibText.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
-          if (match && match[1] && $(sib).is(el) === false) {
-            numeroDocumento = match[1];
-            console.log(`API - Número do documento encontrado no elemento irmão: ${numeroDocumento}`);
-            return false;
-          }
-        });
-        
-        // Verificar nos elementos próximos
-        const next = $(el).next();
-        if (next.length > 0) {
-          const nextText = next.text().trim();
-          const match = nextText.match(/(?:\D|^)(\d{6,9})(?:\D|$)/);
-          if (match && match[1]) {
-            numeroDocumento = match[1];
-            console.log(`API - Número do documento encontrado no próximo elemento: ${numeroDocumento}`);
-            return false;
-          }
-        }
-      }
-    });
-    
-    // Método 2: Procurar elementos HTML que contenham apenas um número com 6-9 dígitos
-    if (!numeroDocumento) {
-      $('*').each((i, el) => {
-        if (numeroDocumento) return false;
-        
-        const text = $(el).text().trim();
-        // Números isolados que parecem ser um identificador
-        if (/^\d{6,9}$/.test(text)) {
-          numeroDocumento = text;
-          console.log(`API - Número do documento encontrado como texto isolado: ${numeroDocumento}`);
-          return false;
-        }
-      });
-    }
-    
-    // Método 3: Usar regex para procurar padrões de número de documento no HTML
-    if (!numeroDocumento) {
-      const padroes = [
-        // Padrões comuns para cupons fiscais e notas
-        /COO:\s*(\d{6,9})/i,
-        /Extrato n[ºo°]\s*(\d{6,9})/i,
-        /N[úu]mero do CF-e-SAT:\s*(\d{6,9})/i,
-        /N[úu]mero do Documento:\s*(\d{6,9})/i,
-        /N[úu]mero\s*(?:do|da)?\s*(?:Cupom|Nota|SAT)?\s*:?\s*(\d{6,9})/i,
-        /SAT\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
-        /NF(?:e|ce)?\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
-        /CF(?:e|ce)?\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
-        /Documento\s*(?:Nº|número|num)?\s*:?\s*(\d{6,9})/i,
-        // Último recurso: procurar por números específicos
-        /(\d{6,9})/
-      ];
-      
-      for (const padrao of padroes) {
-        const match = html.match(padrao);
-        if (match && match[1]) {
-          numeroDocumento = match[1].trim();
-          console.log(`API - Número do documento extraído por regex: ${numeroDocumento}`);
-          break;
-        }
-      }
-    }
-    
-    return numeroDocumento;
-  } catch (e) {
-    console.error('API - Erro ao extrair número do documento:', e);
-    return undefined;
-  }
-}
-
-function extrairValor(html: string): string | undefined {
-  try {
-    // Carregar o HTML com Cheerio
-    const $ = cheerio.load(html);
-    
-    // Variável para armazenar o valor encontrado
-    let valorEncontrado: string | undefined;
-    
-    // Método 1: Procurar por elementos que geralmente contêm valores monetários
-    $('[id*="valor"], [id*="total"], [id*="preco"], [class*="valor"], [class*="total"], [class*="preco"]').each((i, el) => {
-      if (valorEncontrado) return false;
-      
-      const text = $(el).text().trim();
-      // Regex para extrair valores monetários
-      const match = text.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-      if (match) {
-        const valorStr = match[1] || match[2];
-        const valor = valorStr.replace(/\./g, '').replace(',', '.');
-        if (!isNaN(parseFloat(valor))) {
-          valorEncontrado = valor;
-          console.log(`API - Valor encontrado em elemento específico: ${valorEncontrado}`);
-          return false;
-        }
-      }
-    });
-    
-    // Método 2: Procurar por textos que mencionam valores
-    if (!valorEncontrado) {
-      const labelsValor = [
-        'VALOR PAGO', 'VALOR TOTAL', 'TOTAL R$', 'TOTAL:', 
-        'Valor pago', 'Valor Total', 'Valor do Documento', 'Valor da Nota',
-        'Total do documento', 'TOTAL', 'Total:', 'Valor:'
-      ];
-      
-      for (const label of labelsValor) {
-        if (valorEncontrado) break;
-        
-        $('*').each((i, el) => {
-          if (valorEncontrado) return false;
-          
-          const text = $(el).text().trim();
-          if (text.includes(label)) {
-            // Verificar no próprio texto
-            const match = text.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-            if (match) {
-              const valorStr = match[1] || match[2];
-              const valor = valorStr.replace(/\./g, '').replace(',', '.');
-              if (!isNaN(parseFloat(valor))) {
-                valorEncontrado = valor;
-                console.log(`API - Valor encontrado junto ao label: ${valorEncontrado}`);
-                return false;
-              }
-            }
-            
-            // Verificar em elementos próximos
-            const parent = $(el).parent();
-            parent.find('*').each((i, child) => {
-              if (valorEncontrado || $(child).is(el)) return;
-              
-              const childText = $(child).text().trim();
-              const match = childText.match(/R\$\s*([0-9.,]+)|([0-9]+[,.][0-9]{2})/);
-              if (match) {
-                const valorStr = match[1] || match[2];
-                const valor = valorStr.replace(/\./g, '').replace(',', '.');
-                if (!isNaN(parseFloat(valor))) {
-                  valorEncontrado = valor;
-                  console.log(`API - Valor encontrado em elemento relacionado: ${valorEncontrado}`);
-                  return false;
-                }
-              }
-            });
-          }
-        });
-      }
-    }
-    
-    // Método 3: Procurar por qualquer valor monetário no documento
-    if (!valorEncontrado) {
-      const htmlText = $.text();
-      const padroes = [
-        /VALOR\s*PAGO\s*:?\s*R?\$?\s*([0-9.,]+)/i,
-        /VALOR\s*TOTAL\s*:?\s*R?\$?\s*([0-9.,]+)/i,
-        /TOTAL\s*:?\s*R?\$?\s*([0-9.,]+)/i,
-        /R\$\s*([0-9]+[,.][0-9]{2})/,
-        /([0-9]+[,.][0-9]{2})/
-      ];
-      
-      for (const padrao of padroes) {
-        const match = htmlText.match(padrao);
-        if (match && match[1]) {
-          const valorStr = match[1].trim();
-          const valor = valorStr.replace(/\./g, '').replace(',', '.');
-          if (!isNaN(parseFloat(valor))) {
-            valorEncontrado = valor;
-            console.log(`API - Valor extraído do texto: ${valorEncontrado}`);
-            break;
-          }
-        }
-      }
-    }
-    
-    return valorEncontrado;
-  } catch (e) {
-    console.error('API - Erro ao extrair valor:', e);
-    return undefined;
-  }
-}
-
-function extrairDataEmissao(html: string): string | undefined {
-  try {
-    // Carregar o HTML com Cheerio
-    const $ = cheerio.load(html);
-    
-    // Variável para armazenar a data encontrada
-    let dataEncontrada: string | undefined;
-    
-    // Método 1: Procurar por elementos que mencionam datas
-    const labelsData = [
-      'Data de Emissão', 'Data Emissão', 'Emissão', 'Data',
-      'DATA DE EMISSÃO', 'DATA EMISSÃO', 'EMISSÃO', 'DATA'
-    ];
-    
-    for (const label of labelsData) {
-      if (dataEncontrada) break;
-      
-      $('*').each((i, el) => {
-        if (dataEncontrada) return false;
-        
-        const text = $(el).text().trim();
-        if (text.includes(label)) {
-          // Verificar no próprio texto
-          const match = text.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
-          if (match) {
-            dataEncontrada = normalizarData(match[0]);
-            console.log(`API - Data encontrada junto ao label: ${dataEncontrada}`);
-            return false;
-          }
-          
-          // Verificar em elementos próximos
-          const parent = $(el).parent();
-          parent.find('*').each((i, child) => {
-            if (dataEncontrada || $(child).is(el)) return;
-            
-            const childText = $(child).text().trim();
-            const match = childText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{4}-\d{2}-\d{2})/);
-            if (match) {
-              dataEncontrada = normalizarData(match[0]);
-              console.log(`API - Data encontrada em elemento relacionado: ${dataEncontrada}`);
-              return false;
-            }
-          });
-        }
-      });
-    }
-    
-    // Método 2: Procurar qualquer data no documento
-    if (!dataEncontrada) {
-      const htmlText = $.text();
-      const padroes = [
-        /Data\s*(?:de)?\s*Emiss[ãa]o\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        /Emiss[ãa]o\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        /Data\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i,
-        /dhEmi["':=]\s*["']?(\d{4}-\d{2}-\d{2})/i,
-        /(\d{2}\/\d{2}\/\d{4})/,
-        /(\d{4}-\d{2}-\d{2})/
-      ];
-      
-      for (const padrao of padroes) {
-        const match = htmlText.match(padrao);
-        if (match && match[1]) {
-          dataEncontrada = normalizarData(match[1]);
-          console.log(`API - Data extraída do texto: ${dataEncontrada}`);
-          break;
-        }
-      }
-    }
-    
-    return dataEncontrada;
-  } catch (e) {
-    console.error('API - Erro ao extrair data:', e);
-    return undefined;
-  }
-}
-
-// Função auxiliar para normalizar datas para formato DD/MM/AAAA
-function normalizarData(dataStr: string): string {
-  // Verificar se é formato ISO (YYYY-MM-DD)
-  if (dataStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    const [ano, mes, dia] = dataStr.split('-');
-    return `${dia}/${mes}/${ano}`;
-  }
-  
-  // Verificar se é formato com pontos (DD.MM.AAAA)
-  if (dataStr.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
-    return dataStr.replace(/\./g, '/');
-  }
-  
-  // Se já está no formato DD/MM/AAAA, retornar como está
-  return dataStr;
 } 
