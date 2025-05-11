@@ -141,6 +141,52 @@ export async function POST(request: NextRequest) {
       // EXTRAÇÃO DIRETA ESPECÍFICA PARA SEFAZ MG
       // ========================================
       
+      // Tentar extrair "Valor pago R$" especificamente da SEFAZ MG
+      if (!valor) {
+        try {
+          const valorPagoElement = $('strong:contains("Valor pago R$")').nextAll('strong').first();
+          if (valorPagoElement.length) {
+            const valorText = valorPagoElement.text().trim();
+            const match = valorText.match(/^[\d.,]+/); // Pega o valor no início da string
+            if (match && match[0]) {
+              // Garantir que o valor esteja no formato correto (ponto como separador decimal)
+              valor = match[0].replace(/\./g, '').replace(',', '.');
+              console.log('API - SEFAZ MG - Valor pago R$ extraído diretamente:', valor);
+            }
+          }
+        } catch (e) {
+          console.warn('API - SEFAZ MG - Erro ao tentar extração direta de "Valor pago R$"', e);
+        }
+      }
+
+      // Tentar extrair "Data Emissão" especificamente da SEFAZ MG da tabela "Informações gerais da Nota"
+      if (!dataEmissao) {
+        try {
+          const infoGeraisTable = $('h5')
+            .filter((i, el) => $(el).text().trim() === 'Informações gerais da Nota')
+            .first()
+            .next('table');
+
+          if (infoGeraisTable.length) {
+            // Encontrar a linha que parece conter os dados principais (Modelo, Série, Número, Data Emissão)
+            // Essa linha geralmente tem 4 células
+            const dataRow = infoGeraisTable.find('tr').filter((i, tr) => $(tr).find('td').length === 4).last();
+            if (dataRow.length) {
+              const dataCellText = dataRow.find('td').last().text().trim();
+              // Espera-se algo como "04/05/2025 15:34:43"
+              const match = dataCellText.match(/(\d{2}\/\d{2}\/\d{4})/); // Extrai DD/MM/YYYY
+              if (match && match[1]) {
+                // Manter no formato DD/MM/YYYY para processamento posterior
+                dataEmissao = match[1];
+                console.log('API - SEFAZ MG - Data Emissão extraída diretamente da tabela:', dataEmissao);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('API - SEFAZ MG - Erro ao tentar extração direta de "Data Emissão"', e);
+        }
+      }
+      
       // 1. Procurar pelo número do documento (se ainda não encontrado no link)
       if (!numeroDocumento) {
         // Extrair número do documento utilizando seletores específicos comuns da SEFAZ MG
@@ -246,7 +292,7 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // 2. Procurar o valor do cupom fiscal (se ainda não encontrado no link)
+      // 2. Procurar o valor do cupom fiscal (se ainda não encontrado no link ou na extração SEFAZ MG)
       if (!valor) {
         // Usando seletores específicos para valores em cupons fiscais
         $('.valor-total, .total-nota, .nfce-valor-total, .imposto-texto, .info-valor').each((_, el) => {
@@ -338,6 +384,7 @@ export async function POST(request: NextRequest) {
           for (const pattern of valorPatterns) {
             const match = html.match(pattern);
             if (match && match[1]) {
+              // Garantir que o valor esteja no formato correto (ponto como separador decimal)
               valor = match[1].replace(/\./g, '').replace(',', '.');
               console.log('API - Valor encontrado com regex:', valor);
               break;
@@ -346,7 +393,7 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // 3. Procurar a data de emissão (se ainda não encontrada no link)
+      // 3. Procurar a data de emissão (se ainda não encontrada no link ou na extração SEFAZ MG)
       if (!dataEmissao) {
         // Usando seletores específicos para datas em cupons fiscais
         $('.data-emissao, .nfce-data, .info-data, .data-nota').each((_, el) => {
@@ -422,6 +469,7 @@ export async function POST(request: NextRequest) {
           for (const pattern of dataPatterns) {
             const match = html.match(pattern);
             if (match && match[1]) {
+              // Manter no formato DD/MM/YYYY para processamento posterior
               dataEmissao = match[1].replace(/\./g, '/').replace(/-/g, '/');
               console.log('API - Data encontrada com regex:', dataEmissao);
               break;

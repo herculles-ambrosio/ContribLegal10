@@ -213,22 +213,6 @@ export default function CadastrarDocumento() {
       // Atualizar os campos com os dados extraídos (se houver)
       const formUpdates: any = {};
 
-      // Processar o número do documento (prioridade máxima)
-      if (fiscalReceiptData.numeroDocumento) {
-        // Verificar se é um número de documento válido (entre 6 e 9 dígitos numéricos)
-        const numeroLimpo = fiscalReceiptData.numeroDocumento.replace(/\D/g, '');
-        if (numeroLimpo.length >= 6 && numeroLimpo.length <= 9) {
-          formUpdates.numero_documento = numeroLimpo;
-          console.log('Número do documento extraído e limpo:', numeroLimpo);
-        } else if (fiscalReceiptData.numeroDocumento.length >= 6 && fiscalReceiptData.numeroDocumento.length <= 9) {
-          // Se não estiver no formato esperado, mas tiver comprimento adequado, usar o valor original
-          formUpdates.numero_documento = fiscalReceiptData.numeroDocumento;
-          console.log('Número do documento extraído com sucesso:', fiscalReceiptData.numeroDocumento);
-        } else {
-          console.warn('Número do documento extraído tem formato inválido:', fiscalReceiptData.numeroDocumento);
-        }
-      }
-      
       // Processar o valor do cupom
       if (fiscalReceiptData.valor) {
         try {
@@ -259,14 +243,12 @@ export default function CadastrarDocumento() {
           }
           
           if (!isNaN(valorNumerico)) {
-            // Formatar para exibição no formato brasileiro
-            const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
+            // Formatar para exibição no formato brasileiro para consistência com o input
+            formUpdates.valor = valorNumerico.toLocaleString('pt-BR', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
             });
-            
-            formUpdates.valor = valorFormatado;
-            console.log('Valor extraído e formatado:', valorFormatado, 'Original:', fiscalReceiptData.valor);
+            console.log('Valor extraído para o formulário (string pt-BR):', formUpdates.valor, 'Original da API:', fiscalReceiptData.valor);
           } else {
             console.warn('Valor extraído não é um número válido:', fiscalReceiptData.valor);
           }
@@ -279,17 +261,15 @@ export default function CadastrarDocumento() {
       if (fiscalReceiptData.dataEmissao) {
         try {
           // Verificar diferentes formatos de data
-          let dia, mes, ano;
+          let dataFormatada = '';
           
           // Formato brasileiro DD/MM/AAAA
           const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
           const matchBR = fiscalReceiptData.dataEmissao.match(formatoBR);
           
           if (matchBR) {
-            // Usando desestruturação com uma variável que não será usada (underscore)
-            const [unused, diaBR, mesBR, anoBR] = matchBR;
-            formUpdates.data_emissao = `${anoBR}-${mesBR}-${diaBR}`;
-            console.log('Data formatada para o campo (BR):', formUpdates.data_emissao);
+            const [_, dia, mes, ano] = matchBR;
+            dataFormatada = `${ano}-${mes}-${dia}`;
           } else {
             // Tentar outros formatos (DD-MM-AAAA, AAAA-MM-DD)
             const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
@@ -299,16 +279,18 @@ export default function CadastrarDocumento() {
             const matchISO = fiscalReceiptData.dataEmissao.match(formatoISO);
             
             if (matchTraco) {
-              const [unused, diaTraco, mesTraco, anoTraco] = matchTraco;
-              formUpdates.data_emissao = `${anoTraco}-${mesTraco}-${diaTraco}`;
-              console.log('Data formatada para o campo (traço):', formUpdates.data_emissao);
+              const [_, dia, mes, ano] = matchTraco;
+              dataFormatada = `${ano}-${mes}-${dia}`;
             } else if (matchISO) {
-              const [unused, anoISO, mesISO, diaISO] = matchISO;
-              formUpdates.data_emissao = `${anoISO}-${mesISO}-${diaISO}`;
-              console.log('Data formatada para o campo (ISO):', formUpdates.data_emissao);
-            } else {
-              console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
+              dataFormatada = fiscalReceiptData.dataEmissao; // Já está no formato correto
             }
+          }
+          
+          if (dataFormatada) {
+            formUpdates.data_emissao = dataFormatada;
+            console.log('Data formatada para o campo:', formUpdates.data_emissao);
+          } else {
+            console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
           }
         } catch (e) {
           console.error('Erro ao processar data:', e);
@@ -317,10 +299,7 @@ export default function CadastrarDocumento() {
       
       // Verificar se conseguimos extrair algum dado
       const fieldsExtracted = [];
-      if (formUpdates.numero_documento && formUpdates.numero_documento !== normalizedResult) {
-        fieldsExtracted.push('número do documento');
-      }
-      if (formUpdates.valor) fieldsExtracted.push('valor');
+      if (formUpdates.valor !== undefined) fieldsExtracted.push('valor');
       if (formUpdates.data_emissao) fieldsExtracted.push('data');
       
       // Atualizar o formulário com os dados extraídos
@@ -442,13 +421,13 @@ export default function CadastrarDocumento() {
       // Preparar os dados a serem inseridos
       const documentoData = {
         usuario_id: userId,
-        tipo: formData.tipo,
+        tipo: formData.tipo as string,
         numero_documento: formData.numero_documento,
         data_emissao: formData.data_emissao,
         valor: valorFormatado,
-        arquivo_url: uploadData?.path || null, // Pode ser null para cupom fiscal
+        arquivo_url: uploadData?.path || null,
         numero_sorteio: numeroSorteio,
-        status: 'AGUARDANDO VALIDAÇÃO'
+        status: 'AGUARDANDO VALIDAÇÃO' as string
       };
       
       console.log('Dados a serem inseridos:', documentoData);
@@ -523,23 +502,28 @@ export default function CadastrarDocumento() {
           .select('status')
           .single();
 
-        if (!empresaError && empresaData) {
-          setEmpresaStatus(empresaData.status);
+        if (!empresaError && empresaData && typeof empresaData === 'object' && 'status' in empresaData) {
+          const statusDaEmpresa = empresaData.status as string; // Assumindo que status é string
+          setEmpresaStatus(statusDaEmpresa);
           
-          // Se a empresa estiver bloqueada, redirecionar para a página inicial
-          if (empresaData.status === 'BLOQUEADO') {
+          if (statusDaEmpresa === 'BLOQUEADO') {
             toast.error('O Contribuinte Legal encontra-se BLOQUEADO no momento');
             await supabase.auth.signOut();
             router.push('/');
             return;
           }
 
-          // Se a empresa estiver inativa, redirecionar para o painel do contribuinte
-          if (empresaData.status === 'INATIVO') {
+          if (statusDaEmpresa === 'INATIVO') {
             toast.error('O Contribuinte Legal encontra-se INATIVO no momento. Não é possível cadastrar novos documentos.');
             router.push('/contribuinte');
             return;
           }
+        } else if (empresaError) {
+          // Tratar o erro da query da empresa se necessário, ou logar
+          console.error('Erro ao buscar status da empresa:', empresaError);
+          toast.error('Não foi possível verificar o status da empresa. Tente novamente.');
+          router.push('/login'); // Ou uma página de erro apropriada
+          return;
         }
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
