@@ -121,8 +121,15 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
         const successCallback = (decodedText: string) => {
           logDebug(`QR code lido com sucesso: ${decodedText}`);
           
-          // Parar o scanner após sucesso
+          // Prevenir múltiplas chamadas do mesmo código QR
+          // Parar o scanner imediatamente para evitar loops
           if (scannerRef.current) {
+            try {
+              scannerRef.current.pause();
+            } catch (pauseError) {
+              // Ignorar erros ao pausar
+            }
+          
             scannerRef.current.stop().then(() => {
               setIsScanning(false);
               
@@ -161,9 +168,22 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
                 // Tentar novamente em caso de erro
                 setTimeout(() => onScanSuccess(decodedText), 500);
               }
+            }).catch(stopError => {
+              logDebug(`Erro ao parar scanner após sucesso: ${stopError}`);
+              // Tentar chamar o callback mesmo se houver erro ao parar
+              try {
+                onScanSuccess(decodedText);
+              } catch (finalError) {
+                // Último recurso - ignorar erros
+              }
             });
           } else {
-            onScanSuccess(decodedText);
+            // Scanner não disponível, mas tentar chamar callback mesmo assim
+            try {
+              onScanSuccess(decodedText);
+            } catch (noScannerError) {
+              // Ignorar erros finais
+            }
           }
         };
         

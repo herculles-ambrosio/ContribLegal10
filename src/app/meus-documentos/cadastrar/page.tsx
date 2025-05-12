@@ -41,6 +41,7 @@ export default function CadastrarDocumento() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMessage, setExtractionMessage] = useState('Extraindo dados do cupom fiscal...');
   const [scannerLogs, setScannerLogs] = useState<string[]>([]); // Para armazenar logs do scanner
+  const [isProcessingQrCode, setIsProcessingQrCode] = useState(false);
 
   // Refs para acessar diretamente os inputs do DOM
   const numeroDocumentoRef = useRef<HTMLInputElement>(null);
@@ -191,12 +192,24 @@ export default function CadastrarDocumento() {
   };
 
   const handleQrCodeResult = async (result: string) => {
+    // Verificar se já estamos processando um QR code para evitar loops
+    if (isProcessingQrCode) {
+      console.log('DEBUG > Já existe um processamento de QR code em andamento. Ignorando nova chamada.');
+      return;
+    }
+    
+    // Indicar que começamos a processar
+    setIsProcessingQrCode(true);
+    
     console.log('DEBUG > ============ INÍCIO DO PROCESSAMENTO DO QR CODE ============');
     console.log('DEBUG > QR Code detectado (valor original):', result);
     
     // Salvar o QR code original para uso em caso de problemas
     const originalQrCode = result.trim();
     console.log('DEBUG > QR Code normalizado:', originalQrCode);
+    
+    // Fechar o scanner automaticamente e imediatamente
+    setShowScanner(false);
     
     // SOLUÇÃO RADICAL: Definir o valor diretamente via DOM além do React state
     if (numeroDocumentoRef.current) {
@@ -211,27 +224,6 @@ export default function CadastrarDocumento() {
       console.log('DEBUG > Estado do formulário atualizado (número documento):', newState);
       return newState;
     });
-    
-    // REDUNDÂNCIA: Definir novamente após um pequeno delay
-    setTimeout(() => {
-      // Verificar se o valor foi realmente definido
-      console.log('DEBUG > Verificando se o valor do número do documento foi mantido...');
-      
-      // Verificar via DOM
-      if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== originalQrCode) {
-        console.log('DEBUG > Valor DOM perdido! Redefinindo número_documento via DOM:', originalQrCode);
-        numeroDocumentoRef.current.value = originalQrCode;
-      }
-      
-      // Verificar via state
-      if (formData.numero_documento !== originalQrCode) {
-        console.log('DEBUG > Valor state perdido! Redefinindo número_documento via setState:', originalQrCode);
-        setFormData(prev => ({ ...prev, numero_documento: originalQrCode }));
-      }
-    }, 300);
-    
-    // Fechar o scanner automaticamente
-    setShowScanner(false);
     
     // Mostrar modal de carregamento com mensagem mais descritiva
     setExtractionMessage('Extraindo dados do cupom fiscal - isso pode demorar alguns segundos...');
@@ -304,11 +296,6 @@ export default function CadastrarDocumento() {
       // Feedback ao usuário
       toast.success('QR Code processado com sucesso! Verifique os dados preenchidos.');
       
-      // VERIFICAÇÃO FINAL - garantir que os valores foram aplicados
-      setTimeout(() => {
-        verificarPreenchimentoCampos(originalQrCode);
-      }, 500);
-      
       console.log('DEBUG > ============ FIM DO PROCESSAMENTO DO QR CODE ============');
     } catch (extractionError) {
       // Esconder modal de carregamento em caso de erro
@@ -325,6 +312,9 @@ export default function CadastrarDocumento() {
       handleFieldUpdate('data_emissao', hoje);
       
       console.log('DEBUG > ============ FIM COM ERRO DO PROCESSAMENTO DO QR CODE ============');
+    } finally {
+      // Independentemente do resultado, indicar que o processamento terminou
+      setIsProcessingQrCode(false);
     }
   };
   
