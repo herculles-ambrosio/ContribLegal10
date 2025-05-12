@@ -70,6 +70,21 @@ export default function CadastrarDocumento() {
       console.log('Tipo de documento alterado para:', value);
     }
     
+    // Tratamento especial para links de QR Code no campo numero_documento
+    if (name === 'numero_documento') {
+      // Se o valor atual é um link (começa com http ou https), verificar se o usuário está editando
+      if ((formData.numero_documento.startsWith('http://') || formData.numero_documento.startsWith('https://')) &&
+          value !== formData.numero_documento) {
+        // Alerta para o usuário que editou um link válido de QR code
+        console.warn("Alerta: Editando um link de QR code pode afetar a validação do documento");
+        
+        // Se o usuário apagou o link, podemos mostrar um toast de aviso
+        if (value.length < 10 && formData.numero_documento.length > 20) {
+          toast.error("Atenção: Editar o link do QR code pode afetar a validação. Prefira usar o scanner.");
+        }
+      }
+    }
+    
     // Tratamento especial para o campo valor
     if (name === 'valor') {
       // Remove tudo que não for número ou vírgula
@@ -244,7 +259,8 @@ export default function CadastrarDocumento() {
       const cleanQrCode = qrCodeText.trim();
       console.log("QR code normalizado:", cleanQrCode);
       
-      // Definir valor no formulário imediatamente - campo de número do documento
+      // IMPORTANTE: Definir o número do documento como o link completo
+      // Este é o comportamento esperado e necessário para o sistema
       setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
       
       // Mostrar mensagem de carregamento enquanto buscamos mais informações
@@ -262,18 +278,18 @@ export default function CadastrarDocumento() {
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // Garantir que o número do documento mantém o valor correto
-          // (como esse é o dado mais importante, garantimos que ele está correto)
+          // CRUCIAL: Garantir que o número do documento seja SEMPRE o link completo
+          // Este é o comportamento esperado pelo sistema
           setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
           
           // Processar e formatar o valor
-          if (info.valor) {
+          if (info.valor && info.valor.trim() !== '') {
             try {
               // Normalizar primeiro - remover formatação existente
               const valorTexto = info.valor.toString().replace(/\./g, '').replace(',', '.');
               const valorNumerico = parseFloat(valorTexto);
               
-              if (!isNaN(valorNumerico)) {
+              if (!isNaN(valorNumerico) && valorNumerico > 0) {
                 // Formatar em estilo brasileiro (R$ 10,50)
                 const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
                   minimumFractionDigits: 2,
@@ -283,7 +299,7 @@ export default function CadastrarDocumento() {
                 console.log("Valor formatado:", valorFormatado);
                 setFormData(prev => ({ ...prev, valor: valorFormatado }));
               } else {
-                console.error("Valor não numérico:", info.valor);
+                console.error("Valor não numérico ou zero:", info.valor);
                 setFormData(prev => ({ ...prev, valor: '0,00' }));
               }
             } catch (error) {
@@ -296,7 +312,7 @@ export default function CadastrarDocumento() {
           }
           
           // Processar e formatar a data
-          if (info.dataEmissao) {
+          if (info.dataEmissao && info.dataEmissao.trim() !== '') {
             try {
               let dataFormatada = info.dataEmissao;
               
@@ -328,6 +344,27 @@ export default function CadastrarDocumento() {
             setFormData(prev => ({ ...prev, data_emissao: hoje }));
           }
           
+          // VERIFICAÇÃO FINAL: Garantir que o número do documento ainda é o link completo
+          // Isso é crítico para o funcionamento correto do sistema
+          if (formData.numero_documento !== cleanQrCode) {
+            console.warn("Número do documento foi alterado durante o processamento, corrigindo...");
+            setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+          }
+          
+          // Verificar se temos acesso direto ao DOM para garantir o valor
+          if (numeroDocumentoRef.current) {
+            console.log("Atualizando valor do campo número do documento via DOM");
+            numeroDocumentoRef.current.value = cleanQrCode;
+            
+            // Disparar eventos para que o React detecte a mudança
+            try {
+              const evento = new Event('input', { bubbles: true });
+              numeroDocumentoRef.current.dispatchEvent(evento);
+            } catch (e) {
+              console.error("Erro ao disparar evento input:", e);
+            }
+          }
+          
           // Feedback de sucesso para o usuário
           toast.success("Dados extraídos com sucesso!");
         })
@@ -337,7 +374,7 @@ export default function CadastrarDocumento() {
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // Mesmo em caso de erro, garantir que o número do documento está preenchido
+          // Mesmo em caso de erro, garantir que o número do documento (link completo) está preenchido
           setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
           
           // Usar valores padrão para os campos restantes
@@ -351,6 +388,12 @@ export default function CadastrarDocumento() {
           toast.error("Não foi possível extrair todos os dados. Os campos foram preenchidos com valores padrão.");
         })
         .finally(() => {
+          // Verificação final para garantir que o número do documento é o link completo
+          if (formData.numero_documento !== cleanQrCode) {
+            console.warn("Corrigindo número do documento na finalização");
+            setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+          }
+          
           setIsProcessingQrCode(false);
         });
     } catch (error) {
@@ -361,7 +404,7 @@ export default function CadastrarDocumento() {
       setIsProcessingQrCode(false);
       toast.error("Erro ao processar QR code. Tente novamente.");
     }
-  }, [setFormData, isProcessingQrCode]);
+  }, [setFormData, isProcessingQrCode, formData.numero_documento]);
 
   // Função para lidar com erros no scanner
   const handleScannerError = useCallback((error: any) => {

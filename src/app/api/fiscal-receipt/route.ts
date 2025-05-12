@@ -579,6 +579,25 @@ export async function POST(request: NextRequest) {
       numeroDocumento = normalizedLink;
       console.log('API-DEBUG > Garantindo número do documento como link completo:', numeroDocumento);
       
+      // Garantir que o valor, se extraído mas inválido, seja tratado
+      if (valor) {
+        try {
+          // Tentar converter para número para verificar validade
+          const valorNumerico = parseFloat(valor.replace(',', '.'));
+          if (isNaN(valorNumerico) || valorNumerico <= 0) {
+            console.log('API-DEBUG > Valor extraído inválido, removendo:', valor);
+            valor = ''; // Valor inválido, melhor não enviar do que enviar errado
+          } else {
+            // Formatar com precisão de 2 casas decimais
+            valor = valorNumerico.toFixed(2).replace('.', ',');
+            console.log('API-DEBUG > Valor normalizado:', valor);
+          }
+        } catch (e) {
+          console.log('API-DEBUG > Erro ao validar valor, removendo:', valor);
+          valor = ''; // Em caso de erro, remover valor
+        }
+      }
+      
       // Montar objeto com os resultados encontrados
       // IMPORTANTE: numeroDocumento DEVE ser o link completo
       const dados = {
