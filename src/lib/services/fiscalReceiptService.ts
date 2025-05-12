@@ -67,11 +67,46 @@ export async function extractDataFromFiscalReceipt(
       console.log('Dados extraídos:', data);
       
       // Retornar os dados normalizados
-      return {
+      const result = {
         numeroDocumento: data.numeroDocumento,
         valor: data.valor,
         dataEmissao: data.dataEmissao,
       };
+
+      // Processamento adicional para garantir a validade do valor
+      if (result.valor) {
+        try {
+          // Tratar valores numéricos inválidos
+          let valorProcessado = result.valor;
+          
+          // Remover caracteres não numéricos, exceto vírgula e ponto
+          valorProcessado = valorProcessado.replace(/[^\d,\.]/g, '');
+          
+          // Substituir pontos por nada (assumindo que são separadores de milhar)
+          valorProcessado = valorProcessado.replace(/\./g, '');
+          
+          // Substituir vírgula por ponto para operações numéricas
+          valorProcessado = valorProcessado.replace(',', '.');
+          
+          // Converter para número e verificar validade
+          const valorNumerico = parseFloat(valorProcessado);
+          
+          if (isNaN(valorNumerico) || valorNumerico <= 0) {
+            console.warn('Valor inválido detectado:', result.valor, '- Tratado como indefinido');
+            result.valor = undefined;
+          } else {
+            // Formatação para padrão brasileiro (com vírgula como separador decimal)
+            result.valor = valorNumerico.toFixed(2).replace('.', ',');
+            console.log('Valor processado com sucesso:', result.valor);
+          }
+        } catch (e) {
+          console.error('Erro ao processar valor:', e);
+          result.valor = undefined;
+        }
+      }
+
+      console.log('Dados finais retornados pelo serviço:', result);
+      return result;
     } catch (error) {
       // Limpar timeout em caso de erro
       clearTimeout(timeoutId);

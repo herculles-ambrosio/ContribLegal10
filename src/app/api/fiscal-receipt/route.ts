@@ -63,8 +63,14 @@ export async function POST(request: NextRequest) {
       const valorPatterns = [
         /(?:vNF=|valorNF=|valor=|total=|vPag=)([0-9,.]+)/i,
         /(?:vNF|valorNF|valor|total|vPag)[=:]([0-9,.]+)/i,
-        /(?:R\$)([0-9,.]+)/i,
-        /(?:valor.*?)([0-9]+[,.][0-9]{2})/i
+        /(?:R\\$)([0-9,.]+)/i,
+        /(?:valor.*?)([0-9]+[,.][0-9]{2})/i,
+        /(?:VALOR.*?:?\s*)([0-9]+[,.][0-9]{2})/i,
+        /(?:Total.*?:?\s*)([0-9]+[,.][0-9]{2})/i,
+        /(?<=total).*?([0-9]+[,.][0-9]{2})/i,
+        /(?<=valor).*?([0-9]+[,.][0-9]{2})/i,
+        /(?:R\$\s*)([0-9,.]+)/i,  // Com espaços entre R$ e o valor
+        /([0-9]+,[0-9]{2})(?=\s*$)/i  // Valor no final da string
       ];
       
       // Testar todos os padrões até encontrar um valor válido
