@@ -58,18 +58,118 @@ export async function POST(request: NextRequest) {
     
     // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
     try {
-      // Padrões comuns em URLs de QR codes fiscais da SEFAZ MG para valor
-      const valorMatch = normalizedLink.match(/(?:vNF=|valorNF=|valor=|total=)([0-9,.]+)/i);
-      if (valorMatch && valorMatch[1]) {
-        valor = valorMatch[1].replace(',', '.');
-        console.log('API-DEBUG > Valor extraído do link:', valor);
+      // Padrões mais robustos para valores em URLs de QR codes fiscais
+      // Tentar diversos formatos de acordo com os padrões conhecidos
+      const valorPatterns = [
+        /(?:vNF=|valorNF=|valor=|total=|vPag=)([0-9,.]+)/i,
+        /(?:vNF|valorNF|valor|total|vPag)[=:]([0-9,.]+)/i,
+        /(?:R\$)([0-9,.]+)/i,
+        /(?:valor.*?)([0-9]+[,.][0-9]{2})/i
+      ];
+      
+      // Testar todos os padrões até encontrar um valor válido
+      for (const pattern of valorPatterns) {
+        const valorMatch = normalizedLink.match(pattern);
+        if (valorMatch && valorMatch[1]) {
+          // Normalizar o valor - remover pontos e substituir vírgula por ponto
+          let valorExtraido = valorMatch[1].replace(/\./g, '').replace(',', '.');
+          
+          // Verificar se o valor é válido (deve ser um número)
+          if (!isNaN(parseFloat(valorExtraido))) {
+            valor = valorExtraido;
+            console.log('API-DEBUG > Valor extraído do link:', valor);
+            break;
+          }
+        }
       }
       
-      // Tentar extrair data do link
-      const dataMatch = normalizedLink.match(/(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i);
-      if (dataMatch && dataMatch[1]) {
-        dataEmissao = dataMatch[1].replace(/-/g, '/');
-        console.log('API-DEBUG > Data extraída do link:', dataEmissao);
+      // Tentar extrair data do link com padrões mais robustos
+      const dataPatterns = [
+        // Padrões de data comuns em URLs de QR codes fiscais
+        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
+        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
+        /(?:dhEmi|dtEmissao|data|dt)[=:]([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
+        /(?:dhEmi|dtEmissao|data|dt)[=:]([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
+        /Data:?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
+        /Data:?\s*([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
+        // Extrair data de formato timestamp
+        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{14})/i,
+      ];
+      
+      // Testar todos os padrões
+      for (const pattern of dataPatterns) {
+        const dataMatch = normalizedLink.match(pattern);
+        if (dataMatch && dataMatch[1]) {
+          let dataExtraida = dataMatch[1];
+          
+          // Se for formato timestamp (14 dígitos), converter para data
+          if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
+            // Formato: AAAAMMDDHHMMSS
+            const ano = dataExtraida.substring(0, 4);
+            const mes = dataExtraida.substring(4, 6);
+            const dia = dataExtraida.substring(6, 8);
+            dataExtraida = `${dia}/${mes}/${ano}`;
+          }
+          // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
+          else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
+            const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+            if (matches) {
+              dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
+            }
+          }
+          
+          dataEmissao = dataExtraida.replace(/-/g, '/');
+          console.log('API-DEBUG > Data extraída do link:', dataEmissao);
+          break;
+        }
+      }
+      
+      // Extrair valores diretamente do URL usando parâmetros conhecidos
+      try {
+        // Se o link é uma URL, tentar extrair parâmetros dela
+        const url = new URL(normalizedLink);
+        
+        // Extrair valor de parâmetros explícitos da URL
+        const valorParam = url.searchParams.get('vNF') || 
+                           url.searchParams.get('valorNF') || 
+                           url.searchParams.get('valor') || 
+                           url.searchParams.get('total') ||
+                           url.searchParams.get('vPag');
+                           
+        if (valorParam && !isNaN(parseFloat(valorParam.replace(',', '.')))) {
+          valor = valorParam.replace(',', '.');
+          console.log('API-DEBUG > Valor extraído da URL (parâmetro):', valor);
+        }
+        
+        // Extrair data de parâmetros explícitos da URL
+        const dataParam = url.searchParams.get('dhEmi') || 
+                          url.searchParams.get('dtEmissao') || 
+                          url.searchParams.get('data') || 
+                          url.searchParams.get('dt');
+                          
+        if (dataParam) {
+          // Tentar extrair data do parâmetro encontrado
+          let dataParamFormatada = dataParam;
+          
+          // Se for timestamp de 14 dígitos
+          if (dataParam.length === 14 && /^\d+$/.test(dataParam)) {
+            const ano = dataParam.substring(0, 4);
+            const mes = dataParam.substring(4, 6);
+            const dia = dataParam.substring(6, 8);
+            dataParamFormatada = `${dia}/${mes}/${ano}`;
+          } 
+          // Se for formato ISO (AAAA-MM-DD)
+          else if (/^\d{4}-\d{2}-\d{2}/.test(dataParam)) {
+            const [ano, mes, dia] = dataParam.split('-');
+            dataParamFormatada = `${dia}/${mes}/${ano}`;
+          }
+          
+          dataEmissao = dataParamFormatada;
+          console.log('API-DEBUG > Data extraída da URL (parâmetro):', dataEmissao);
+        }
+      } catch (urlError) {
+        // Ignorar erros ao analisar a URL
+        console.log('API-DEBUG > Erro ao analisar URL:', urlError);
       }
     } catch (linkExtractionError) {
       console.error('API-DEBUG > Erro ao extrair dados do link:', linkExtractionError);

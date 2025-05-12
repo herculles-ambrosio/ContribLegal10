@@ -226,44 +226,123 @@ export default function CadastrarDocumento() {
       // Definir valor no formulário - campo de número do documento
       setFormData(prev => ({ ...prev, numero_documento: qrCodeText }));
       
-      // Buscar informações do documento apenas se o link for válido
-      if (qrCodeText && qrCodeText.length > 0) {
-        console.log("Buscando informações do documento a partir do QR code");
-        
-        extractDataFromFiscalReceipt(qrCodeText)
-          .then((info) => {
-            console.log("Informações do documento obtidas com sucesso:", info);
-            
-            // Atualizar estado
-            setDocumentoInfo(info);
-            
-            // Preencher campos do formulário com verificação de nullish
-            if (info.valor) {
-              setFormData(prev => ({ ...prev, valor: info.valor.toString() }));
+      // Mostrar modal de carregamento
+      setExtractionMessage('Extraindo dados do cupom fiscal - isso pode demorar alguns segundos...');
+      setIsExtracting(true);
+      
+      // Buscar informações do documento
+      console.log("Buscando informações do documento a partir do QR code");
+      
+      extractDataFromFiscalReceipt(qrCodeText)
+        .then((info) => {
+          console.log("Informações do documento obtidas com sucesso:", info);
+          
+          // Atualizar estado
+          setDocumentoInfo(info);
+          
+          // Esconder modal de carregamento
+          setIsExtracting(false);
+          
+          // Garantir que o número do documento está definido
+          setFormData(prev => ({ ...prev, numero_documento: qrCodeText }));
+          
+          // Processar valor para garantir formato brasileiro com vírgula como separador decimal
+          if (info.valor) {
+            try {
+              // Normalizar primeiro (remover formatação)
+              const valorNumerico = parseFloat(info.valor.toString().replace(/\./g, '').replace(',', '.'));
+              
+              if (!isNaN(valorNumerico)) {
+                // Formatar como valor brasileiro (ex: 10,50)
+                const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                });
+                
+                console.log("Valor formatado:", valorFormatado);
+                
+                // Atualizar o valor no estado do formulário
+                setFormData(prev => ({ ...prev, valor: valorFormatado }));
+              } else {
+                console.error("Valor não numérico:", info.valor);
+                // Definir valor padrão
+                setFormData(prev => ({ ...prev, valor: '0,00' }));
+              }
+            } catch (error) {
+              console.error("Erro ao processar valor:", error);
+              // Definir valor padrão
+              setFormData(prev => ({ ...prev, valor: '0,00' }));
             }
-            
-            if (info.dataEmissao) {
-              // Garantir que dataEmissao seja string
-              const dataEmissao = info.dataEmissao || '';
-              setFormData(prev => ({ ...prev, data_emissao: dataEmissao }));
+          } else {
+            // Se não há valor, usar 0,00
+            setFormData(prev => ({ ...prev, valor: '0,00' }));
+          }
+          
+          // Processar data de emissão
+          if (info.dataEmissao) {
+            try {
+              // Tentar converter para formato brasileiro se não estiver (DD/MM/AAAA)
+              let dataFormatada = info.dataEmissao;
+              
+              // Verifica se a data está no formato ISO (AAAA-MM-DD)
+              if (/^\d{4}-\d{2}-\d{2}/.test(dataFormatada)) {
+                const [ano, mes, dia] = dataFormatada.split('-');
+                dataFormatada = `${dia}/${mes}/${ano}`;
+              }
+              
+              // Verificar se está no formato brasileiro (DD/MM/AAAA)
+              if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataFormatada)) {
+                // Converter para formato do HTML input (YYYY-MM-DD)
+                const [dia, mes, ano] = dataFormatada.split('/');
+                dataFormatada = `${ano}-${mes}-${dia}`;
+              }
+              
+              console.log("Data formatada para input:", dataFormatada);
+              
+              // Atualizar a data no estado do formulário
+              setFormData(prev => ({ ...prev, data_emissao: dataFormatada }));
+            } catch (error) {
+              console.error("Erro ao processar data:", error);
+              // Usar a data atual como fallback
+              const hoje = new Date().toISOString().split('T')[0];
+              setFormData(prev => ({ ...prev, data_emissao: hoje }));
             }
-            
-            toast.success("Informações do documento obtidas com sucesso");
-          })
-          .catch((error) => {
-            console.error("Erro ao obter informações do documento:", error);
-            toast.error(
-              "Não foi possível obter as informações do documento. Preencha manualmente."
-            );
-          })
-          .finally(() => {
-            setIsProcessingQrCode(false);
-          });
-      } else {
-        setIsProcessingQrCode(false);
-      }
+          } else {
+            // Se não há data, usar a data atual
+            const hoje = new Date().toISOString().split('T')[0];
+            setFormData(prev => ({ ...prev, data_emissao: hoje }));
+          }
+          
+          toast.success("Informações do documento obtidas com sucesso!");
+        })
+        .catch((error) => {
+          console.error("Erro ao obter informações do documento:", error);
+          
+          // Esconder modal de carregamento
+          setIsExtracting(false);
+          
+          // Garantir que pelo menos o número do documento está definido
+          setFormData(prev => ({ ...prev, numero_documento: qrCodeText }));
+          
+          // Definir valores padrão para os outros campos
+          const hoje = new Date().toISOString().split('T')[0];
+          setFormData(prev => ({ 
+            ...prev, 
+            valor: '0,00',
+            data_emissao: hoje
+          }));
+          
+          toast.error("Não foi possível obter as informações do documento. Preenchendo campos com valores padrão.");
+        })
+        .finally(() => {
+          setIsProcessingQrCode(false);
+        });
     } catch (error) {
       console.error("Erro ao processar QR code:", error);
+      
+      // Esconder modal de carregamento
+      setIsExtracting(false);
+      
       toast.error("Erro ao processar QR code. Tente novamente.");
       setIsProcessingQrCode(false);
     }
