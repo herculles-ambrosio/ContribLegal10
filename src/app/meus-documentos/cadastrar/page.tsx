@@ -234,11 +234,11 @@ export default function CadastrarDocumento() {
 
   // Função para processar QR code
   const handleQrCodeScan = useCallback((qrCodeText: string) => {
-    console.log("QR code lido:", qrCodeText);
+    console.log("🔍 QR code lido:", qrCodeText);
     
     // Verificar se já estamos processando outro QR code
     if (isProcessingQrCode) {
-      console.log("Já existe processamento em andamento, ignorando nova leitura");
+      console.log("⚠️ Já existe processamento em andamento, ignorando nova leitura");
       return;
     }
     
@@ -257,37 +257,63 @@ export default function CadastrarDocumento() {
       
       // Limpar e normalizar o texto do QR code
       const cleanQrCode = qrCodeText.trim();
-      console.log("QR code normalizado:", cleanQrCode);
+      console.log("🔍 QR code normalizado:", cleanQrCode);
       
-      // CRUCIAL: Primeiro, armazenar o link em uma variável local
-      // para garantir que não seja perdido durante o processamento
-      const linkCompleto = cleanQrCode;
+      // IMPORTANTE: Criar uma nova referência para o link para garantir que será preservada
+      const originalLink = cleanQrCode;
       
-      // PRIMEIRO NÍVEL DE REDUNDÂNCIA: Atualizar o estado React imediatamente
-      setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+      // PRIORIDADE MÁXIMA: Definir o link como número do documento IMEDIATAMENTE
+      // para que ele esteja visível para o usuário o mais rápido possível
+      setFormData(prev => ({ ...prev, numero_documento: originalLink }));
       
-      // SEGUNDO NÍVEL DE REDUNDÂNCIA: Atualizar diretamente o input via DOM
+      // Atualizar interface imediatamente
       if (numeroDocumentoRef.current) {
-        console.log("Atualizando DOM diretamente - Número do documento:", linkCompleto);
-        numeroDocumentoRef.current.value = linkCompleto;
-        
-        // Disparar evento para que o React detecte a mudança
+        console.log("🔒 Garantindo QR code no DOM:", originalLink);
+        numeroDocumentoRef.current.value = originalLink;
         try {
           const evento = new Event('input', { bubbles: true });
           numeroDocumentoRef.current.dispatchEvent(evento);
         } catch (e) {
-          console.error("Erro ao disparar evento input:", e);
+          console.error("⚠️ Erro ao disparar evento input:", e);
         }
       }
       
-      // Mostrar mensagem de carregamento enquanto buscamos mais informações
+      // Mostrar feedback que estamos processando o QR code
       setExtractionMessage('Extraindo dados do cupom fiscal - isso pode levar alguns segundos...');
       setIsExtracting(true);
+      
+      // Manter uma REFERÊNCIA DIRETA ao link original que deve persistir durante todo o processamento
+      console.log("🔒 Link original que será preservado:", originalLink);
+      
+      // Criar um timeout para garantir que o processamento não demore muito
+      // para melhorar a experiência do usuário
+      const timeoutDuration = 20000; // 20 segundos máximo
+      const extractionTimeoutId = setTimeout(() => {
+        console.log("⏱️ TIMEOUT: Extração demorou muito tempo, cancelando");
+        setIsExtracting(false);
+        
+        // Mesmo com timeout, garantir o número do documento
+        setFormData(prev => ({
+          ...prev,
+          numero_documento: originalLink,
+          valor: prev.valor || '0,00',
+          data_emissao: prev.data_emissao || new Date().toISOString().split('T')[0]
+        }));
+        
+        // Atualizar DOM
+        if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
+        
+        toast.error("A extração demorou muito tempo. Os campos foram preenchidos com os dados disponíveis.");
+        setIsProcessingQrCode(false);
+      }, timeoutDuration);
       
       // Chamar API para extrair dados adicionais
       extractDataFromFiscalReceipt(cleanQrCode)
         .then((info) => {
-          console.log("Dados extraídos do QR code:", info);
+          // Limpar timeout pois a resposta chegou
+          clearTimeout(extractionTimeoutId);
+          
+          console.log("🔍 Dados extraídos do QR code:", info);
           
           // Atualizar estado do documento atual
           setDocumentoInfo(info);
@@ -295,23 +321,25 @@ export default function CadastrarDocumento() {
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // TERCEIRO NÍVEL DE REDUNDÂNCIA: Garantir que o número do documento seja SEMPRE o link completo
-          setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          // VERIFICAÇÃO CRÍTICA: Garantir que o número do documento continua sendo o link original
+          if (info.numeroDocumento !== originalLink) {
+            console.warn("⚠️ ALERTA: Número do documento foi alterado pela API, restaurando link original");
+          }
           
-          // QUARTO NÍVEL DE REDUNDÂNCIA: Atualizar diretamente o DOM novamente
+          // SEMPRE usar o link original como número do documento
+          setFormData(prev => ({ ...prev, numero_documento: originalLink }));
+          
+          // Garantir que o DOM também tenha o link original
           if (numeroDocumentoRef.current) {
-            console.log("Re-verificando DOM - Número do documento:", linkCompleto);
-            numeroDocumentoRef.current.value = linkCompleto;
-            
-            // Disparar evento novamente
+            numeroDocumentoRef.current.value = originalLink;
             try {
               const evento = new Event('input', { bubbles: true });
               numeroDocumentoRef.current.dispatchEvent(evento);
             } catch (e) {
-              console.error("Erro ao disparar evento input:", e);
+              console.error("⚠️ Erro ao disparar evento input para número do documento:", e);
             }
           }
-          
+
           // Processar e formatar o valor
           if (info.valor && info.valor.trim() !== '') {
             try {
@@ -513,134 +541,70 @@ export default function CadastrarDocumento() {
             }
           }
           
-          // VERIFICAÇÃO FINAL DE INTEGRIDADE: Verificar todos os valores e corrigir se necessário
-          
-          // 1. Verificar novamente número do documento (link completo)
-          if (formData.numero_documento !== linkCompleto) {
-            console.warn("🔴 ALERTA: Número do documento foi alterado, restaurando...");
-            setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          // VERIFICAÇÃO FINAL: Verificar todos os valores e corrigir se necessário
+          setTimeout(() => {
+            console.log("🔍 Verificação final de segurança dos dados");
             
-            if (numeroDocumentoRef.current) {
-              numeroDocumentoRef.current.value = linkCompleto;
+            // Verificar número do documento (prioridade máxima)
+            if (formData.numero_documento !== originalLink) {
+              console.warn("🔴 CORREÇÃO CRÍTICA: Restaurando link original no estado");
+              setFormData(prev => ({ ...prev, numero_documento: originalLink }));
+            }
+            
+            if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== originalLink) {
+              console.warn("🔴 CORREÇÃO CRÍTICA: Restaurando link original no DOM");
+              numeroDocumentoRef.current.value = originalLink;
               try {
                 const evento = new Event('input', { bubbles: true });
                 numeroDocumentoRef.current.dispatchEvent(evento);
-              } catch (e) {
-                console.error("Erro ao disparar evento input final para número do documento:", e);
-              }
+              } catch (e) {/* Ignorar erro */}
             }
-          }
-          
-          // Verificar se os campos estão corretamente preenchidos após 500ms
-          // Isso dá tempo para o React atualizar o DOM
-          setTimeout(() => {
-            // Verificar número do documento
-            if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== linkCompleto) {
-              console.warn("Correção final: Número do documento diferente do esperado");
-              numeroDocumentoRef.current.value = linkCompleto;
-            }
-            
-            // Verificar se o valor está formatado corretamente
-            if (valorRef.current && valorRef.current.value) {
-              // Se não tiver vírgula (formato brasileiro), ajustar
-              if (!valorRef.current.value.includes(',')) {
-                try {
-                  const valorNum = parseFloat(valorRef.current.value.replace(/[^\d\.]/g, ''));
-                  if (!isNaN(valorNum)) {
-                    valorRef.current.value = valorNum.toLocaleString('pt-BR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    });
-                  }
-                } catch (e) {
-                  console.error("Erro na verificação final do valor:", e);
-                }
-              }
-            }
-            
           }, 500);
           
-          // Feedback de sucesso para o usuário após verificação
           toast.success("Dados extraídos com sucesso!");
         })
         .catch((error) => {
-          console.error("Erro ao extrair dados:", error);
+          // Limpar timeout pois a resposta (com erro) chegou
+          clearTimeout(extractionTimeoutId);
+          
+          console.error("❌ Erro ao extrair dados:", error);
           
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // Mesmo em caso de erro, garantir que o número do documento (link completo) está preenchido
-          setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          // MESMO COM ERRO: Garantir que o número do documento é o link original
+          setFormData(prev => ({ 
+            ...prev, 
+            numero_documento: originalLink,
+            valor: '0,00',
+            data_emissao: new Date().toISOString().split('T')[0]
+          }));
           
-          // Atualizar número do documento via DOM mesmo no erro
+          // Atualizar DOM para o número do documento
           if (numeroDocumentoRef.current) {
-            numeroDocumentoRef.current.value = linkCompleto;
+            numeroDocumentoRef.current.value = originalLink;
             try {
               const evento = new Event('input', { bubbles: true });
               numeroDocumentoRef.current.dispatchEvent(evento);
-            } catch (e) {
-              console.error("Erro ao disparar evento input para número do documento (após erro):", e);
-            }
+            } catch (e) {/* Ignorar erro */}
           }
           
-          // Usar valores padrão para os campos restantes
-          const hoje = new Date();
-          const dia = String(hoje.getDate()).padStart(2, '0');
-          const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-          const ano = hoje.getFullYear();
-          const dataISOHoje = `${ano}-${mes}-${dia}`;
-          
-          setFormData(prev => ({ 
-            ...prev, 
-            valor: '0,00',
-            data_emissao: dataISOHoje
-          }));
-          
-          // Atualizar DOM para outros campos
-          if (valorRef.current) {
-            valorRef.current.value = '0,00';
-            try {
-              const evento = new Event('input', { bubbles: true });
-              valorRef.current.dispatchEvent(evento);
-            } catch (e) {
-              console.error("Erro ao disparar evento input para valor padrão (após erro API):", e);
-            }
-          }
-          
-          if (dataEmissaoRef.current) {
-            dataEmissaoRef.current.value = dataISOHoje;
-            try {
-              const evento = new Event('input', { bubbles: true });
-              dataEmissaoRef.current.dispatchEvent(evento);
-            } catch (e) {
-              console.error("Erro ao disparar evento input para data padrão (após erro API):", e);
-            }
-          }
-          
-          toast.error("Não foi possível extrair todos os dados. Os campos foram preenchidos com valores padrão.");
+          toast.error("Não foi possível extrair todos os dados. Verifique manualmente os valores.");
         })
         .finally(() => {
-          // Verificação final para garantir que o número do documento é o link completo
-          // após todo o processamento
-          if (formData.numero_documento !== linkCompleto) {
-            console.warn("🔴 ALERTA FINAL: Corrigindo número do documento na finalização");
-            setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          // Verificação final para garantir sempre o link original
+          if (formData.numero_documento !== originalLink) {
+            setFormData(prev => ({ ...prev, numero_documento: originalLink }));
             
             if (numeroDocumentoRef.current) {
-              numeroDocumentoRef.current.value = linkCompleto;
-              try {
-                const evento = new Event('input', { bubbles: true });
-                numeroDocumentoRef.current.dispatchEvent(evento);
-              } catch (e) {
-                console.error("Erro ao disparar evento input no finally:", e);
-              }
+              numeroDocumentoRef.current.value = originalLink;
             }
           }
           
           setIsProcessingQrCode(false);
         });
     } catch (error) {
-      console.error("Erro geral ao processar QR code:", error);
+      console.error("❌ Erro geral ao processar QR code:", error);
       setIsProcessingQrCode(false);
       setIsExtracting(false);
       toast.error("Ocorreu um erro ao processar o QR code");

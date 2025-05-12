@@ -261,343 +261,318 @@ export async function POST(request: NextRequest) {
       // Carregar o HTML com Cheerio para análise
       const $ = cheerio.load(html);
       
-      // EXTRAÇÃO DIRETA ESPECÍFICA PARA SEFAZ MG
-      // ========================================
+      // EXTRAÇÃO DIRETA ESPECÍFICA PARA SEFAZ MG - MELHORADA
+      // ===================================================
       
-      // Tentar extrair "Valor pago R$" especificamente da SEFAZ MG
+      // TÉCNICA 1: Extrair diretamente elementos com texto relacionado a valor
       if (!valor) {
         try {
-          const valorPagoElement = $('strong:contains("Valor pago R$")').nextAll('strong').first();
-          if (valorPagoElement.length) {
-            const valorText = valorPagoElement.text().trim();
-            const match = valorText.match(/^[\d.,]+/); // Pega o valor no início da string
-            if (match && match[0]) {
-              // Garantir que o valor esteja no formato correto (ponto como separador decimal)
-              valor = match[0].replace(/\./g, '').replace(',', '.');
-              console.log('API - SEFAZ MG - Valor pago R$ extraído diretamente:', valor);
-            }
-          }
-        } catch (e) {
-          console.warn('API - SEFAZ MG - Erro ao tentar extração direta de "Valor pago R$"', e);
-        }
-      }
-
-      // Tentar extrair "Data Emissão" especificamente da SEFAZ MG da tabela "Informações gerais da Nota"
-      if (!dataEmissao) {
-        try {
-          const infoGeraisTable = $('h5')
-            .filter((i, el) => $(el).text().trim() === 'Informações gerais da Nota')
-            .first()
-            .next('table');
-
-          if (infoGeraisTable.length) {
-            // Encontrar a linha que parece conter os dados principais (Modelo, Série, Número, Data Emissão)
-            // Essa linha geralmente tem 4 células
-            const dataRow = infoGeraisTable.find('tr').filter((i, tr) => $(tr).find('td').length === 4).last();
-            if (dataRow.length) {
-              const dataCellText = dataRow.find('td').last().text().trim();
-              // Espera-se algo como "04/05/2025 15:34:43"
-              const match = dataCellText.match(/(\d{2}\/\d{2}\/\d{4})/); // Extrai DD/MM/YYYY
-              if (match && match[1]) {
-                // Manter no formato DD/MM/YYYY para processamento posterior
-                dataEmissao = match[1];
-                console.log('API - SEFAZ MG - Data Emissão extraída diretamente da tabela:', dataEmissao);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('API - SEFAZ MG - Erro ao tentar extração direta de "Data Emissão"', e);
-        }
-      }
-      
-      // 1. Procurar pelo número do documento (se ainda não encontrado no link)
-      if (!numeroDocumento) {
-        // Extrair número do documento utilizando seletores específicos comuns da SEFAZ MG
-        // Seletor específico para NFC-e da SEFAZ MG
-        $('.nfce-container .nfce-info, .box-info .numero-nota, .infoDadosNfe .numero, .box-nfce .dado-numero, .info-cupom .coo').each((_, el) => {
-          const text = $(el).text().trim();
-          const match = text.match(/(?:\d{6,9})|(?:N[Ff][Cc][Ee]?\s*[#:]?\s*(\d+))|(?:[Cc][Oo][Oo]\s*[:]?\s*(\d+))/);
-          if (match) {
-            numeroDocumento = match[1] || match[2] || match[0];
-            console.log('API - Número do documento encontrado em seletor específico:', numeroDocumento);
-            return false; // Sair do loop
-          }
-        });
-        
-        // Busca geral por elementos que podem conter o número do documento
-        if (!numeroDocumento) {
-          $('*').each((_, el) => {
-            const text = $(el).text().trim();
-            
-            // Verificar padrões comuns específicos da SEFAZ MG
-            if (
-              (text.includes('Número') || text.includes('Nota') || text.includes('Cupom') || 
-               text.includes('NFC') || text.includes('SAT') || text.includes('ECF') || 
-               text.includes('COO') || text.includes('Extrato'))
-            ) {
-              // Procurar número próximo ao texto identificado
-              let numeroMatch = text.match(/(?:N[Ff][Cc][Ee]?\s*[#:]?\s*(\d{6,9}))|(?:Nota\s*[Ff]iscal\s*[#:]?\s*(\d{6,9}))|(?:Cupom\s*[Ff]iscal\s*[#:]?\s*(\d{6,9}))|(?:SAT\s*[#:]?\s*(\d{6,9}))|(?:ECF\s*[#:]?\s*(\d{6,9}))|(?:COO\s*[:]?\s*(\d{6,9}))|(?:Extrato\s*[#:]?\s*(\d{6,9}))|(?:Número\s*[#:]?\s*(\d{6,9}))/i);
-              
-              if (!numeroMatch) {
-                // Tentar um padrão mais simples
-                numeroMatch = text.match(/\b(\d{6,9})\b/);
-              }
-              
-              if (numeroMatch) {
-                // Pegar o primeiro grupo capturado ou o match completo
-                for (let i = 1; i < numeroMatch.length; i++) {
-                  if (numeroMatch[i]) {
-                    numeroDocumento = numeroMatch[i];
-                    console.log('API - Número documento encontrado em texto:', numeroDocumento);
-                    return false; // Sair do loop
-                  }
-                }
-                
-                if (!numeroDocumento && numeroMatch[0] && /^\d{6,9}$/.test(numeroMatch[0])) {
-                  numeroDocumento = numeroMatch[0];
-                  console.log('API - Número documento encontrado em texto (match completo):', numeroDocumento);
-                  return false;
-                }
-              }
-              
-              // Verificar no elemento pai ou próximo
-              if (!numeroDocumento) {
-                const parent = $(el).parent();
-                const parentText = parent.text().trim();
-                const parentMatch = parentText.match(/\b(\d{6,9})\b/);
-                if (parentMatch && parentMatch[1] && !text.includes(parentMatch[1])) {
-                  numeroDocumento = parentMatch[1];
-                  console.log('API - Número documento encontrado em elemento pai:', numeroDocumento);
-                  return false;
-                }
-                
-                // Verificar próximo elemento
-                const next = $(el).next();
-                if (next.length) {
-                  const nextText = next.text().trim();
-                  const nextMatch = nextText.match(/\b(\d{6,9})\b/);
-                  if (nextMatch && nextMatch[1]) {
-                    numeroDocumento = nextMatch[1];
-                    console.log('API - Número documento encontrado em próximo elemento:', numeroDocumento);
-                    return false;
-                  }
-                }
-              }
-            }
-          });
-        }
-        
-        // Se ainda não encontrou, procurar no HTML completo
-        if (!numeroDocumento) {
-          const documentPatterns = [
-            /Cupom\s*[Ff]iscal\s*[Ee]letrônico.*?(\d{6,9})/i,
-            /SAT.*?(\d{6,9})/i,
-            /NFCe.*?(\d{6,9})/i,
-            /Extrato\s*(?:n[°º]|num|número)\s*(\d{6,9})/i,
-            /NF[Ce]?\s*(?:n[°º]|num|número)\s*(\d{6,9})/i,
-            /COO\s*[:]\s*(\d{6,9})/i,
-            /ECF\s*[:]\s*(\d{6,9})/i,
-            /Número\s*(?:do\s*)?(?:documento|cupom|nota)\s*[:]\s*(\d{6,9})/i,
-            /\b(\d{9})\b/, // Números com exatamente 9 dígitos
-            /\b(\d{8})\b/, // Números com exatamente 8 dígitos
-            /\b(\d{7})\b/, // Números com exatamente 7 dígitos
-            /\b(\d{6})\b/  // Números com exatamente 6 dígitos
+          console.log("API - Tentando extrair valor usando seletores diretos");
+          
+          // Array de seletores específicos que podem conter o valor total
+          const valorSelectors = [
+            '.valor-total', '.total-nota', '.nfce-valor-total', 
+            '.imposto-texto', '.info-valor', '.totalNota',
+            'span:contains("Valor Total")', 'span:contains("VALOR TOTAL")',
+            'span:contains("Total R$")', 'span:contains("TOTAL R$")',
+            'div:contains("Valor Total")', 'div:contains("VALOR TOTAL")',
+            'td:contains("Valor Total")', 'td:contains("VALOR TOTAL")',
+            'strong:contains("Valor Total")', 'strong:contains("VALOR TOTAL")',
+            'strong:contains("Valor pago R$")', 'strong:contains("VALOR PAGO R$")',
+            'strong:contains("Total:")', 'strong:contains("TOTAL:")',
+            '.valor', '.total', '.valorTotal', '.totalNota', '.valorPago'
           ];
           
-          for (const pattern of documentPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-              numeroDocumento = match[1];
-              console.log('API - Número documento encontrado com regex:', numeroDocumento);
-              break;
-            }
-          }
-        }
-      }
-      
-      // 2. Procurar o valor do cupom fiscal (se ainda não encontrado no link ou na extração SEFAZ MG)
-      if (!valor) {
-        // Usando seletores específicos para valores em cupons fiscais
-        $('.valor-total, .total-nota, .nfce-valor-total, .imposto-texto, .info-valor').each((_, el) => {
-          const text = $(el).text().trim();
-          const match = text.match(/R\$\s*([\d.,]+)/);
-          if (match && match[1]) {
-            valor = match[1].replace(/\./g, '').replace(',', '.');
-            console.log('API - Valor encontrado em seletor específico:', valor);
-            return false;
-          }
-        });
-        
-        // Se não encontrou com seletores específicos, procurar elementos com texto relacionado
-        if (!valor) {
-          $('*').each((_, el) => {
-            if (valor) return false; // Já encontramos, sair
-            
-            const text = $(el).text().trim();
-            
-            // Verificar padrões específicos para o valor
-            if (
-              (text.includes('Total') || text.includes('TOTAL') || 
-               text.includes('Valor') || text.includes('VALOR') ||
-               text.includes('R$'))
-            ) {
-              // Tentar extrair da mesma linha/elemento
-              const valorMatch = text.match(/R\$\s*([\d.,]+)/);
-              if (valorMatch && valorMatch[1]) {
-                valor = valorMatch[1].replace(/\./g, '').replace(',', '.');
-                console.log('API - Valor encontrado em texto:', valor);
-                return false;
-              }
+          // Tentar cada seletor e ver se encontra algo
+          for (const selector of valorSelectors) {
+            const elements = $(selector);
+            if (elements.length > 0) {
+              console.log(`API - Encontrado elemento com seletor: ${selector}`);
               
-              // Procurar valor numérico direto (sem R$)
-              if (!valor && /TOTAL|Total|VALOR|Valor/.test(text)) {
-                const valorNumericoMatch = text.match(/[\d.,]+$/);
-                if (valorNumericoMatch && valorNumericoMatch[0]) {
-                  valor = valorNumericoMatch[0].replace(/\./g, '').replace(',', '.');
-                  console.log('API - Valor numérico encontrado em texto:', valor);
-                  return false;
-                }
-              }
-              
-              // Verificar no próximo elemento
-              if (!valor) {
-                const next = $(el).next();
-                if (next.length) {
-                  const nextText = next.text().trim();
-                  const nextMatch = nextText.match(/R\$\s*([\d.,]+)|([\d.,]+)/);
-                  if (nextMatch && (nextMatch[1] || nextMatch[2])) {
-                    valor = (nextMatch[1] || nextMatch[2]).replace(/\./g, '').replace(',', '.');
-                    console.log('API - Valor encontrado em próximo elemento:', valor);
-                    return false;
+              // Para cada elemento encontrado, tentar extrair um valor
+              elements.each((_, el) => {
+                if (valor) return false; // Se já encontrou, sair do loop
+                
+                const text = $(el).text().trim();
+                console.log(`API - Texto do elemento: "${text}"`);
+                
+                // Padrões para encontrar valores monetários em diferentes formatos
+                const patterns = [
+                  /R\$\s*([\d.,]+)/i,           // R$ seguido de números
+                  /([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/,  // Formato brasileiro: 1.234,56
+                  /([\d]{1,3}(?:,[\d]{3})*\.[\d]{2})/,  // Formato americano: 1,234.56
+                  /([\d]+[,.][\d]{2})/          // Formato simples: 1234,56 ou 1234.56
+                ];
+                
+                // Tentar cada padrão para extrair valor
+                for (const pattern of patterns) {
+                  const match = text.match(pattern);
+                  if (match && match[1]) {
+                    console.log(`API - Valor encontrado no texto: ${match[1]}`);
+                    
+                    // Normalizar para formato com ponto como separador decimal
+                    let valorExtraido = match[1];
+                    
+                    // Se for formato brasileiro (com vírgula)
+                    if (valorExtraido.includes(',')) {
+                      valorExtraido = valorExtraido.replace(/\./g, '').replace(',', '.');
+                    }
+                    
+                    // Tentar converter para número para validar
+                    const valorNumerico = parseFloat(valorExtraido);
+                    if (!isNaN(valorNumerico) && valorNumerico > 0) {
+                      valor = valorExtraido;
+                      console.log(`API - Valor extraído e normalizado: ${valor}`);
+                      return false; // Sair do loop
+                    }
                   }
                 }
-              }
-              
-              // Verificar elementos próximos dentro do mesmo pai
-              if (!valor) {
-                const parent = $(el).parent();
-                parent.find('*').each((_, child) => {
-                  if (valor || $(child).is(el)) return;
+                
+                // Se não encontrou com os padrões acima, procurar no próximo elemento
+                const nextEl = $(el).next();
+                if (nextEl.length) {
+                  const nextText = nextEl.text().trim();
+                  console.log(`API - Texto do próximo elemento: "${nextText}"`);
                   
-                  const childText = $(child).text().trim();
-                  const childMatch = childText.match(/R\$\s*([\d.,]+)|([\d.,]+)/);
-                  if (childMatch && (childMatch[1] || childMatch[2])) {
-                    valor = (childMatch[1] || childMatch[2]).replace(/\./g, '').replace(',', '.');
-                    console.log('API - Valor encontrado em elemento irmão:', valor);
-                    return false;
+                  // Tentar extrair valor do próximo elemento
+                  for (const pattern of patterns) {
+                    const match = nextText.match(pattern);
+                    if (match && match[1]) {
+                      let valorExtraido = match[1];
+                      if (valorExtraido.includes(',')) {
+                        valorExtraido = valorExtraido.replace(/\./g, '').replace(',', '.');
+                      }
+                      
+                      const valorNumerico = parseFloat(valorExtraido);
+                      if (!isNaN(valorNumerico) && valorNumerico > 0) {
+                        valor = valorExtraido;
+                        console.log(`API - Valor extraído do próximo elemento: ${valor}`);
+                        return false; // Sair do loop
+                      }
+                    }
                   }
-                });
-              }
-            }
-          });
-        }
-        
-        // Se ainda não encontrou o valor, procurar na página toda
-        if (!valor) {
-          const valorPatterns = [
-            /VALOR\s*TOTAL\s*(?:R\$)?\s*([\d.,]+)/i,
-            /TOTAL\s*(?:R\$)?\s*([\d.,]+)/i,
-            /VALOR\s*PAGO\s*(?:R\$)?\s*([\d.,]+)/i,
-            /VALOR\s*(?:R\$)?\s*([\d.,]+)/i,
-            /TOTAL:?\s*(?:R\$)?\s*([\d.,]+)/i,
-            /R\$\s*([\d.,]+)/i,
-            /\b([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})\b/i // Padrão numérico com vírgula para decimais
-          ];
-          
-          for (const pattern of valorPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-              // Garantir que o valor esteja no formato correto (ponto como separador decimal)
-              valor = match[1].replace(/\./g, '').replace(',', '.');
-              console.log('API - Valor encontrado com regex:', valor);
-              break;
-            }
-          }
-        }
-      }
-      
-      // 3. Procurar a data de emissão (se ainda não encontrada no link ou na extração SEFAZ MG)
-      if (!dataEmissao) {
-        // Usando seletores específicos para datas em cupons fiscais
-        $('.data-emissao, .nfce-data, .info-data, .data-nota').each((_, el) => {
-          const text = $(el).text().trim();
-          const match = text.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
-          if (match) {
-            dataEmissao = (match[1] || match[2] || match[3]).replace(/\./g, '/').replace(/-/g, '/');
-            console.log('API - Data encontrada em seletor específico:', dataEmissao);
-            return false;
-          }
-        });
-        
-        // Busca geral por datas
-        if (!dataEmissao) {
-          $('*').each((_, el) => {
-            if (dataEmissao) return false; // Já encontramos, sair
-            
-            const text = $(el).text().trim();
-            
-            // Verificar padrões específicos para a data
-            if (
-              (text.includes('Data') || text.includes('DATA') || 
-               text.includes('Emissão') || text.includes('EMISSÃO') ||
-               text.includes('EMITIDO') || text.includes('Emitido'))
-            ) {
-              // Procurar no próprio texto
-              const dataMatch = text.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
-              if (dataMatch) {
-                dataEmissao = (dataMatch[1] || dataMatch[2] || dataMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
-                console.log('API - Data encontrada em texto:', dataEmissao);
-                return false;
-              }
-              
-              // Verificar no próximo elemento
-              const next = $(el).next();
-              if (next.length) {
-                const nextText = next.text().trim();
-                const nextMatch = nextText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
-                if (nextMatch) {
-                  dataEmissao = (nextMatch[1] || nextMatch[2] || nextMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
-                  console.log('API - Data encontrada em próximo elemento:', dataEmissao);
-                  return false;
-                }
-              }
-              
-              // Verificar elementos próximos dentro do mesmo pai
-              const parent = $(el).parent();
-              parent.find('*').each((_, child) => {
-                if (dataEmissao || $(child).is(el)) return;
-                
-                const childText = $(child).text().trim();
-                const childMatch = childText.match(/(\d{2}\/\d{2}\/\d{4})|(\d{2}\.\d{2}\.\d{4})|(\d{2}-\d{2}-\d{4})/);
-                if (childMatch) {
-                  dataEmissao = (childMatch[1] || childMatch[2] || childMatch[3]).replace(/\./g, '/').replace(/-/g, '/');
-                  console.log('API - Data encontrada em elemento irmão:', dataEmissao);
-                  return false;
                 }
               });
             }
-          });
+            
+            if (valor) break; // Se já encontrou valor, sair do loop principal
+          }
+        } catch (e) {
+          console.warn('API - Erro ao tentar extrair valor usando seletores diretos:', e);
         }
-        
-        // Se ainda não encontrou a data, procurar na página toda
-        if (!dataEmissao) {
-          const dataPatterns = [
-            /Data\s*(?:de)?\s*Emissão:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
-            /Emissão:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
-            /Data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
-            /Emitido\s*(?:em|dia)?:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
-            /(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i  // Qualquer data em formato DD/MM/AAAA
+      }
+      
+      // TÉCNICA 2: Extrair diretamente elementos com texto relacionado a data
+      if (!dataEmissao) {
+        try {
+          console.log("API - Tentando extrair data usando seletores diretos");
+          
+          // Array de seletores específicos que podem conter a data
+          const dataSelectors = [
+            '.data-emissao', '.nfce-data', '.info-data', '.data-nota',
+            'span:contains("Data de Emissão")', 'span:contains("DATA DE EMISSÃO")',
+            'span:contains("Data Emissão")', 'span:contains("DATA EMISSÃO")',
+            'div:contains("Data de Emissão")', 'div:contains("DATA DE EMISSÃO")',
+            'td:contains("Data de Emissão")', 'td:contains("DATA DE EMISSÃO")',
+            'strong:contains("Data")', 'strong:contains("DATA")',
+            '.data', '.dataEmissao', '.emissao'
           ];
           
-          for (const pattern of dataPatterns) {
-            const match = html.match(pattern);
-            if (match && match[1]) {
-              // Manter no formato DD/MM/YYYY para processamento posterior
-              dataEmissao = match[1].replace(/\./g, '/').replace(/-/g, '/');
-              console.log('API - Data encontrada com regex:', dataEmissao);
-              break;
+          // Padrões para reconhecer datas em diferentes formatos
+          const dataPatterns = [
+            /(\d{2}\/\d{2}\/\d{4})/,                 // DD/MM/YYYY
+            /(\d{2}-\d{2}-\d{4})/,                   // DD-MM-YYYY
+            /(\d{2}\.\d{2}\.\d{4})/,                 // DD.MM.YYYY
+            /(\d{4}-\d{2}-\d{2})/,                   // YYYY-MM-DD
+            /(\d{4}\/\d{2}\/\d{2})/,                 // YYYY/MM/DD
+            /(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2})/ // DD/MM/YYYY HH:MM:SS
+          ];
+          
+          // Tentar cada seletor
+          for (const selector of dataSelectors) {
+            const elements = $(selector);
+            if (elements.length > 0) {
+              console.log(`API - Encontrado elemento com seletor: ${selector}`);
+              
+              // Para cada elemento encontrado, tentar extrair uma data
+              elements.each((_, el) => {
+                if (dataEmissao) return false; // Se já encontrou, sair do loop
+                
+                const text = $(el).text().trim();
+                console.log(`API - Texto do elemento: "${text}"`);
+                
+                // Tentar cada padrão para extrair data
+                for (const pattern of dataPatterns) {
+                  const match = text.match(pattern);
+                  if (match && match[1]) {
+                    console.log(`API - Data encontrada no texto: ${match[1]}`);
+                    
+                    // Extrair apenas a parte da data (sem horas)
+                    let dataExtraida = match[1];
+                    
+                    // Se contiver horas, remover
+                    if (dataExtraida.includes(' ')) {
+                      dataExtraida = dataExtraida.split(' ')[0];
+                    }
+                    
+                    // Converter para o formato DD/MM/YYYY se estiver em outro formato
+                    if (dataExtraida.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
+                      // Formato YYYY-MM-DD ou YYYY/MM/DD
+                      const separador = dataExtraida.includes('-') ? '-' : '/';
+                      const [ano, mes, dia] = dataExtraida.split(separador);
+                      dataExtraida = `${dia}/${mes}/${ano}`;
+                    } else if (dataExtraida.match(/^\d{2}[-\.]\d{2}[-\.]\d{4}$/)) {
+                      // Formato DD-MM-YYYY ou DD.MM.YYYY
+                      dataExtraida = dataExtraida.replace(/[-\.]/g, '/');
+                    }
+                    
+                    // Validar se é uma data válida fazendo parse
+                    const parts = dataExtraida.split('/');
+                    if (parts.length === 3) {
+                      const dia = parseInt(parts[0], 10);
+                      const mes = parseInt(parts[1], 10) - 1; // Meses em JS são 0-11
+                      const ano = parseInt(parts[2], 10);
+                      
+                      const dataObj = new Date(ano, mes, dia);
+                      
+                      if (dataObj.getFullYear() === ano && 
+                          dataObj.getMonth() === mes && 
+                          dataObj.getDate() === dia) {
+                        dataEmissao = dataExtraida;
+                        console.log(`API - Data extraída e normalizada: ${dataEmissao}`);
+                        return false; // Sair do loop
+                      }
+                    }
+                  }
+                }
+                
+                // Se não encontrou com os padrões acima, procurar no próximo elemento
+                const nextEl = $(el).next();
+                if (nextEl.length) {
+                  const nextText = nextEl.text().trim();
+                  console.log(`API - Texto do próximo elemento: "${nextText}"`);
+                  
+                  // Tentar extrair data do próximo elemento
+                  for (const pattern of dataPatterns) {
+                    const match = nextText.match(pattern);
+                    if (match && match[1]) {
+                      let dataExtraida = match[1];
+                      
+                      // Mesmo processamento de data do bloco anterior
+                      if (dataExtraida.includes(' ')) {
+                        dataExtraida = dataExtraida.split(' ')[0];
+                      }
+                      
+                      if (dataExtraida.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
+                        const separador = dataExtraida.includes('-') ? '-' : '/';
+                        const [ano, mes, dia] = dataExtraida.split(separador);
+                        dataExtraida = `${dia}/${mes}/${ano}`;
+                      } else if (dataExtraida.match(/^\d{2}[-\.]\d{2}[-\.]\d{4}$/)) {
+                        dataExtraida = dataExtraida.replace(/[-\.]/g, '/');
+                      }
+                      
+                      const parts = dataExtraida.split('/');
+                      if (parts.length === 3) {
+                        const dia = parseInt(parts[0], 10);
+                        const mes = parseInt(parts[1], 10) - 1;
+                        const ano = parseInt(parts[2], 10);
+                        
+                        const dataObj = new Date(ano, mes, dia);
+                        
+                        if (dataObj.getFullYear() === ano && 
+                            dataObj.getMonth() === mes && 
+                            dataObj.getDate() === dia) {
+                          dataEmissao = dataExtraida;
+                          console.log(`API - Data extraída do próximo elemento: ${dataEmissao}`);
+                          return false; // Sair do loop
+                        }
+                      }
+                    }
+                  }
+                }
+              });
+            }
+            
+            if (dataEmissao) break; // Se já encontrou data, sair do loop principal
+          }
+        } catch (e) {
+          console.warn('API - Erro ao tentar extrair data usando seletores diretos:', e);
+        }
+      }
+      
+      // TÉCNICA 3: Pesquisa agressiva em todo o HTML por padrões de data e valor
+      if (!valor || !dataEmissao) {
+        try {
+          console.log("API - Iniciando pesquisa agressiva no HTML completo");
+          
+          // Extrair todas as strings que possam conter valores monetários
+          if (!valor) {
+            const valorMatches = html.match(/R\$\s*([\d.,]+)/g) || 
+                                html.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/g) ||
+                                html.match(/([\d]+,[\d]{2})/g);
+                                
+            if (valorMatches && valorMatches.length > 0) {
+              console.log(`API - Encontrados ${valorMatches.length} possíveis valores no HTML`);
+              
+              // Filtrar apenas valores que parecem ser "totais" (geralmente os maiores)
+              const valoresNumericos = valorMatches.map(match => {
+                // Extrair apenas o número
+                const numMatch = match.match(/R\$\s*([\d.,]+)/) || 
+                               match.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/) ||
+                               match.match(/([\d]+,[\d]{2})/);
+                               
+                if (numMatch && numMatch[1]) {
+                  // Normalizar para formato com ponto como separador decimal
+                  let valorStr = numMatch[1].replace(/\./g, '').replace(',', '.');
+                  return parseFloat(valorStr);
+                }
+                return 0;
+              }).filter(num => num > 0);
+              
+              if (valoresNumericos.length > 0) {
+                // Ordenar valores do maior para o menor
+                valoresNumericos.sort((a, b) => b - a);
+                
+                // O valor total geralmente é o maior valor na página
+                const maiorValor = valoresNumericos[0];
+                console.log(`API - Maior valor encontrado na página: ${maiorValor}`);
+                
+                valor = maiorValor.toString();
+              }
             }
           }
+          
+          // Extrair todas as strings que possam conter datas
+          if (!dataEmissao) {
+            const dataMatches = html.match(/\d{2}\/\d{2}\/\d{4}/g) || 
+                               html.match(/\d{2}-\d{2}-\d{4}/g) ||
+                               html.match(/\d{2}\.\d{2}\.\d{4}/g);
+                               
+            if (dataMatches && dataMatches.length > 0) {
+              console.log(`API - Encontradas ${dataMatches.length} possíveis datas no HTML`);
+              
+              // Verificar no texto ao redor dessas datas por palavras-chave
+              for (const dataTexto of dataMatches) {
+                // Se encontrar "Data", "Emissão", etc. próximo à data, é provável que seja a data de emissão
+                const indexData = html.indexOf(dataTexto);
+                const textoAoRedor = html.substring(Math.max(0, indexData - 50), Math.min(html.length, indexData + 50));
+                
+                if (/data|emissão|emitido|emitida/i.test(textoAoRedor)) {
+                  console.log(`API - Data encontrada com contexto de emissão: ${dataTexto}`);
+                  dataEmissao = dataTexto.replace(/[-\.]/g, '/');
+                  break;
+                }
+              }
+              
+              // Se não encontrou com contexto, usar a primeira data
+              if (!dataEmissao && dataMatches.length > 0) {
+                dataEmissao = dataMatches[0].replace(/[-\.]/g, '/');
+                console.log(`API - Usando primeira data encontrada: ${dataEmissao}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('API - Erro na pesquisa agressiva:', e);
         }
       }
       
