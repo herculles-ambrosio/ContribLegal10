@@ -191,8 +191,8 @@ export default function CadastrarDocumento() {
     const normalizedResult = result.trim();
     console.log('QR Code normalizado:', normalizedResult);
     
-    // SEMPRE aceitar o QR code, independente do conteúdo
-    // Armazena o próprio link como valor inicial para o número do documento
+    // IMPORTANTE: Sempre manter o link completo no campo de número do documento
+    // Este é o comportamento desejado conforme os requisitos
     setFormData(prev => ({ ...prev, numero_documento: normalizedResult }));
     
     // Fechar o scanner automaticamente
@@ -216,39 +216,41 @@ export default function CadastrarDocumento() {
       // Processar o valor do cupom
       if (fiscalReceiptData.valor) {
         try {
-          // Garantir que estamos lidando com um número
-          let valorNumerico = 0;
+          console.log('Valor recebido da API antes do processamento:', fiscalReceiptData.valor);
+          // Primeiro limpar o valor para garantir o formato correto
+          let valorLimpo = String(fiscalReceiptData.valor).trim();
           
-          // Verificar o formato do valor recebido e converter adequadamente
-          if (typeof fiscalReceiptData.valor === 'string') {
-            // Se estiver no formato brasileiro (vírgula como separador decimal)
-            if (fiscalReceiptData.valor.includes(',')) {
-              // Remover pontos de milhar e substituir vírgula por ponto
-              valorNumerico = parseFloat(fiscalReceiptData.valor.replace(/\./g, '').replace(',', '.'));
-            } 
-            // Se estiver no formato americano (ponto como separador decimal)
-            else if (fiscalReceiptData.valor.includes('.')) {
-              valorNumerico = parseFloat(fiscalReceiptData.valor);
-            } 
-            // Se for apenas números, assumir valor em centavos
-            else if (/^\d+$/.test(fiscalReceiptData.valor)) {
-              // Converter de centavos para reais
-              valorNumerico = parseInt(fiscalReceiptData.valor, 10) / 100;
-            } else {
-              // Tentar converter diretamente
-              valorNumerico = parseFloat(fiscalReceiptData.valor);
-            }
-          } else if (typeof fiscalReceiptData.valor === 'number') {
-            valorNumerico = fiscalReceiptData.valor;
+          // Garantir que estamos lidando com um valor numérico válido
+          let valorNumerico: number;
+          
+          // Se estiver no formato brasileiro (vírgula como separador decimal)
+          if (valorLimpo.includes(',')) {
+            // Remover pontos de milhar e substituir vírgula por ponto
+            valorNumerico = parseFloat(valorLimpo.replace(/\./g, '').replace(',', '.'));
+          } 
+          // Se estiver no formato americano (ponto como separador decimal)
+          else if (valorLimpo.includes('.')) {
+            valorNumerico = parseFloat(valorLimpo);
+          } 
+          // Se for apenas números, assumir valor em centavos ou inteiro dependendo do tamanho
+          else if (/^\d+$/.test(valorLimpo)) {
+            const valorInt = parseInt(valorLimpo, 10);
+            // Se for um número grande (mais de 3 dígitos), provavelmente é centavos
+            valorNumerico = valorInt > 999 ? valorInt / 100 : valorInt;
+          } else {
+            // Tentar converter diretamente como último recurso
+            valorNumerico = parseFloat(valorLimpo);
           }
           
+          console.log('Valor após conversão para número:', valorNumerico);
+          
           if (!isNaN(valorNumerico)) {
-            // Formatar para exibição no formato brasileiro para consistência com o input
+            // Formatar para exibição no formato brasileiro
             formUpdates.valor = valorNumerico.toLocaleString('pt-BR', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
             });
-            console.log('Valor extraído para o formulário (string pt-BR):', formUpdates.valor, 'Original da API:', fiscalReceiptData.valor);
+            console.log('Valor formatado para o formulário:', formUpdates.valor);
           } else {
             console.warn('Valor extraído não é um número válido:', fiscalReceiptData.valor);
           }
@@ -260,12 +262,15 @@ export default function CadastrarDocumento() {
       // Processar a data de emissão
       if (fiscalReceiptData.dataEmissao) {
         try {
+          console.log('Data recebida da API antes do processamento:', fiscalReceiptData.dataEmissao);
+          
           // Verificar diferentes formatos de data
           let dataFormatada = '';
+          const dataOriginal = fiscalReceiptData.dataEmissao.trim();
           
           // Formato brasileiro DD/MM/AAAA
           const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-          const matchBR = fiscalReceiptData.dataEmissao.match(formatoBR);
+          const matchBR = dataOriginal.match(formatoBR);
           
           if (matchBR) {
             const [_, dia, mes, ano] = matchBR;
@@ -275,22 +280,28 @@ export default function CadastrarDocumento() {
             const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
             const formatoISO = /^(\d{4})-(\d{2})-(\d{2})$/;
             
-            const matchTraco = fiscalReceiptData.dataEmissao.match(formatoTraco);
-            const matchISO = fiscalReceiptData.dataEmissao.match(formatoISO);
+            const matchTraco = dataOriginal.match(formatoTraco);
+            const matchISO = dataOriginal.match(formatoISO);
             
             if (matchTraco) {
               const [_, dia, mes, ano] = matchTraco;
               dataFormatada = `${ano}-${mes}-${dia}`;
             } else if (matchISO) {
-              dataFormatada = fiscalReceiptData.dataEmissao; // Já está no formato correto
+              dataFormatada = dataOriginal; // Já está no formato correto
             }
           }
           
           if (dataFormatada) {
-            formUpdates.data_emissao = dataFormatada;
-            console.log('Data formatada para o campo:', formUpdates.data_emissao);
+            // Verificar se a data é válida antes de atribuir
+            const dataObj = new Date(dataFormatada);
+            if (!isNaN(dataObj.getTime())) {
+              formUpdates.data_emissao = dataFormatada;
+              console.log('Data formatada para o campo:', formUpdates.data_emissao);
+            } else {
+              console.warn('Data inválida após formatação:', dataFormatada);
+            }
           } else {
-            console.warn('Formato de data não reconhecido:', fiscalReceiptData.dataEmissao);
+            console.warn('Formato de data não reconhecido:', dataOriginal);
           }
         } catch (e) {
           console.error('Erro ao processar data:', e);
@@ -302,8 +313,13 @@ export default function CadastrarDocumento() {
       if (formUpdates.valor !== undefined) fieldsExtracted.push('valor');
       if (formUpdates.data_emissao) fieldsExtracted.push('data');
       
+      console.log('Campos atualizados:', formUpdates);
+      console.log('Campos extraídos:', fieldsExtracted);
+      
       // Atualizar o formulário com os dados extraídos
-      setFormData(prev => ({ ...prev, ...formUpdates }));
+      if (Object.keys(formUpdates).length > 0) {
+        setFormData(prev => ({ ...prev, ...formUpdates }));
+      }
       
       // Mostrar feedback ao usuário
       if (fieldsExtracted.length > 0) {

@@ -47,30 +47,24 @@ export async function POST(request: NextRequest) {
     const normalizedLink = qrCodeLink.trim();
     console.log('API - Link normalizado recebido:', normalizedLink);
     
-    // Verificar se o próprio link contém informações úteis (muitos QR codes da SEFAZ MG incluem dados no próprio link)
-    let numeroDocumento = '';
+    // IMPORTANTE: Inicialmente, o numeroDocumento DEVE ser o próprio link
+    // Isso garante que, mesmo se as extrações avançadas não funcionarem,
+    // o link completo será retornado como numeroDocumento
+    let numeroDocumento = normalizedLink;
     let valor = '';
     let dataEmissao = '';
     
     // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
     try {
-      // Padrões comuns em URLs de QR codes fiscais da SEFAZ MG
-      const chaveAcessoMatch = normalizedLink.match(/(?:chNFe=|nfeKey=|chave=)([0-9]{44})/i);
-      if (chaveAcessoMatch && chaveAcessoMatch[1]) {
-        // Se encontrou chave de acesso NFe (44 dígitos), extrair o número do documento (últimos 8 dígitos)
-        numeroDocumento = chaveAcessoMatch[1].slice(-8);
-        console.log('API - Número do documento extraído da chave de acesso:', numeroDocumento);
-      }
-      
-      // Tentar extrair valor do link
-      const valorMatch = normalizedLink.match(/(?:vNF=|valorNF=|valor=)([0-9,.]+)/i);
+      // Padrões comuns em URLs de QR codes fiscais da SEFAZ MG para valor
+      const valorMatch = normalizedLink.match(/(?:vNF=|valorNF=|valor=|total=)([0-9,.]+)/i);
       if (valorMatch && valorMatch[1]) {
         valor = valorMatch[1].replace(',', '.');
         console.log('API - Valor extraído do link:', valor);
       }
       
       // Tentar extrair data do link
-      const dataMatch = normalizedLink.match(/(?:dhEmi=|dtEmissao=|data=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i);
+      const dataMatch = normalizedLink.match(/(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i);
       if (dataMatch && dataMatch[1]) {
         dataEmissao = dataMatch[1].replace(/-/g, '/');
         console.log('API - Data extraída do link:', dataEmissao);
@@ -478,9 +472,14 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      // Ao final de toda extração, garantir que numeroDocumento ainda seja o link original
+      // Isso é importante para o caso de alguma lógica de extração ter modificado o valor
+      numeroDocumento = normalizedLink;
+      
       // Montar objeto com os resultados encontrados
+      // IMPORTANTE: numeroDocumento DEVE ser o link completo
       const dados = {
-        numeroDocumento,
+        numeroDocumento, // Este é o link completo
         valor,
         dataEmissao
       };
