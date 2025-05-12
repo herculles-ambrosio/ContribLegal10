@@ -310,7 +310,6 @@ export default function CadastrarDocumento() {
       }, 500);
       
       console.log('DEBUG > ============ FIM DO PROCESSAMENTO DO QR CODE ============');
-      
     } catch (extractionError) {
       // Esconder modal de carregamento em caso de erro
       setIsExtracting(false);
