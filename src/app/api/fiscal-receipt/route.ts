@@ -4,17 +4,22 @@ import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic'; // Sem cache para esta rota
 
-// Configuração de CORS
-const allowedOrigins = ['*']; // Em produção, restrinja para os domínios específicos
+// Lista de origens permitidas para CORS
+const allowedOrigins = ['*']; // Permitir qualquer origem - remover em produção
+
+// Headers para CORS
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // Em produção, use o origin real
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Origin': '*', // Permitir qualquer origem
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-// Handler para requisições OPTIONS (preflight CORS)
+// Lidar com requisição OPTIONS (preflight)
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
 }
 
 interface FiscalReceiptData {
@@ -24,37 +29,56 @@ interface FiscalReceiptData {
   error?: string;
 }
 
+// Tipagem para os dados da requisição
+interface FiscalReceiptRequest {
+  qrCodeLink: string;
+  preExtractedValor?: string;
+  preExtractedData?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // Aplicar headers CORS
-    const origin = request.headers.get('origin') || '';
-    const responseHeaders = { ...corsHeaders };
+    // Configuração de CORS para a resposta
+    const responseHeaders = {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    };
     
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-      responseHeaders['Access-Control-Allow-Origin'] = origin;
-    }
-
-    const { qrCodeLink } = await request.json();
+    // Obter dados da requisição
+    const data: FiscalReceiptRequest = await request.json();
+    const qrCodeUrl = data.qrCodeLink;
+    const preExtractedValor = data.preExtractedValor; // Novo: valor pré-extraído
+    const preExtractedData = data.preExtractedData; // Novo: data pré-extraída
     
-    if (!qrCodeLink) {
+    console.log('API - Link recebido para extração:', qrCodeUrl);
+    
+    if (!qrCodeUrl) {
       return NextResponse.json(
-        { error: 'Link do QR Code não fornecido' },
+        { message: 'URL não fornecida' },
         { status: 400, headers: responseHeaders }
       );
     }
+    
+    // Inicializar variáveis para os dados a serem extraídos
+    let numeroDocumento: string | undefined = undefined;
+    let valor: string | undefined = preExtractedValor; // Usar valor pré-extraído se existir
+    let dataEmissao: string | undefined = preExtractedData; // Usar data pré-extraída se existir
+    
+    console.log('API - Valores pré-extraídos:', { preExtractedValor, preExtractedData });
 
     // Normalizar URL - remover espaços e caracteres estranhos
-    const normalizedLink = qrCodeLink.trim();
+    const normalizedLink = qrCodeUrl.trim();
     console.log('API-DEBUG > Link normalizado recebido:', normalizedLink);
     
     // IMPORTANTE: Inicialmente, o numeroDocumento DEVE ser o próprio link
     // Isso garante que, mesmo se as extrações avançadas não funcionarem,
     // o link completo será retornado como numeroDocumento
-    let numeroDocumento = normalizedLink;
+    numeroDocumento = normalizedLink;
     console.log('API-DEBUG > Número do documento inicial (link completo):', numeroDocumento);
     
-    let valor = '';
-    let dataEmissao = '';
+    // Inicializar o controller para timeout da requisição
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     
     // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
     try {
@@ -181,23 +205,20 @@ export async function POST(request: NextRequest) {
       console.error('API-DEBUG > Erro ao extrair dados do link:', linkExtractionError);
     }
 
-    // Aumentar timeout para URLs lentas
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
-    
-    let url = normalizedLink;
+    // Preparar a URL para a requisição HTTP
+    let requestUrl = normalizedLink;
     
     // Se não for uma URL completa, tentar adicionar o protocolo
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-      console.log('API - URL modificada com protocolo https:', url);
+    if (!requestUrl.startsWith('http://') && !requestUrl.startsWith('https://')) {
+      requestUrl = `https://${requestUrl}`;
+      console.log('API - URL modificada com protocolo https:', requestUrl);
     }
 
-    console.log('API - Iniciando requisição HTTP para:', url);
+    console.log('API - Iniciando requisição HTTP para:', requestUrl);
     
     try {
       // Tentar acessar a página do cupom fiscal com timeout
-      const response = await fetch(url, {
+      const response = await fetch(requestUrl, {
         method: 'GET',
         headers: {
           // Tentar simular um navegador para evitar bloqueios

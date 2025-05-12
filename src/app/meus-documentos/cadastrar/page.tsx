@@ -259,9 +259,26 @@ export default function CadastrarDocumento() {
       const cleanQrCode = qrCodeText.trim();
       console.log("QR code normalizado:", cleanQrCode);
       
-      // IMPORTANTE: Definir o número do documento como o link completo
-      // Este é o comportamento esperado e necessário para o sistema
-      setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+      // CRUCIAL: Primeiro, armazenar o link em uma variável local
+      // para garantir que não seja perdido durante o processamento
+      const linkCompleto = cleanQrCode;
+      
+      // PRIMEIRO NÍVEL DE REDUNDÂNCIA: Atualizar o estado React imediatamente
+      setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+      
+      // SEGUNDO NÍVEL DE REDUNDÂNCIA: Atualizar diretamente o input via DOM
+      if (numeroDocumentoRef.current) {
+        console.log("Atualizando DOM diretamente - Número do documento:", linkCompleto);
+        numeroDocumentoRef.current.value = linkCompleto;
+        
+        // Disparar evento para que o React detecte a mudança
+        try {
+          const evento = new Event('input', { bubbles: true });
+          numeroDocumentoRef.current.dispatchEvent(evento);
+        } catch (e) {
+          console.error("Erro ao disparar evento input:", e);
+        }
+      }
       
       // Mostrar mensagem de carregamento enquanto buscamos mais informações
       setExtractionMessage('Extraindo dados do cupom fiscal - isso pode levar alguns segundos...');
@@ -278,15 +295,42 @@ export default function CadastrarDocumento() {
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // CRUCIAL: Garantir que o número do documento seja SEMPRE o link completo
-          // Este é o comportamento esperado pelo sistema
-          setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+          // TERCEIRO NÍVEL DE REDUNDÂNCIA: Garantir que o número do documento seja SEMPRE o link completo
+          setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          
+          // QUARTO NÍVEL DE REDUNDÂNCIA: Atualizar diretamente o DOM novamente
+          if (numeroDocumentoRef.current) {
+            console.log("Re-verificando DOM - Número do documento:", linkCompleto);
+            numeroDocumentoRef.current.value = linkCompleto;
+            
+            // Disparar evento novamente
+            try {
+              const evento = new Event('input', { bubbles: true });
+              numeroDocumentoRef.current.dispatchEvent(evento);
+            } catch (e) {
+              console.error("Erro ao disparar evento input:", e);
+            }
+          }
           
           // Processar e formatar o valor
           if (info.valor && info.valor.trim() !== '') {
             try {
-              // Normalizar primeiro - remover formatação existente
-              const valorTexto = info.valor.toString().replace(/\./g, '').replace(',', '.');
+              console.log("Processando valor bruto:", info.valor);
+              
+              // Normalizar primeiro - remover formatação existente e símbolos
+              let valorTexto = info.valor.toString();
+              
+              // Remover todos os caracteres não numéricos, exceto vírgula e ponto
+              valorTexto = valorTexto.replace(/[^\d,\.]/g, '');
+              
+              // Substituir pontos por nada (assumindo que são separadores de milhar)
+              valorTexto = valorTexto.replace(/\./g, '');
+              
+              // Substituir vírgula por ponto para operações numéricas
+              valorTexto = valorTexto.replace(',', '.');
+              
+              console.log("Valor normalizado:", valorTexto);
+              
               const valorNumerico = parseFloat(valorTexto);
               
               if (!isNaN(valorNumerico) && valorNumerico > 0) {
@@ -296,76 +340,227 @@ export default function CadastrarDocumento() {
                   maximumFractionDigits: 2
                 });
                 
-                console.log("Valor formatado:", valorFormatado);
+                console.log("Valor formatado para BRL:", valorFormatado);
+                
+                // PRIMEIRO NÍVEL: Atualizar estado React
                 setFormData(prev => ({ ...prev, valor: valorFormatado }));
+                
+                // SEGUNDO NÍVEL: Atualizar DOM diretamente
+                if (valorRef.current) {
+                  console.log("Atualizando DOM diretamente - Valor:", valorFormatado);
+                  valorRef.current.value = valorFormatado;
+                  
+                  // Disparar evento
+                  try {
+                    const evento = new Event('input', { bubbles: true });
+                    valorRef.current.dispatchEvent(evento);
+                  } catch (e) {
+                    console.error("Erro ao disparar evento input para valor:", e);
+                  }
+                }
               } else {
                 console.error("Valor não numérico ou zero:", info.valor);
+                // FALLBACK: Usar valor padrão
                 setFormData(prev => ({ ...prev, valor: '0,00' }));
+                
+                // Atualizar DOM
+                if (valorRef.current) {
+                  valorRef.current.value = '0,00';
+                  try {
+                    const evento = new Event('input', { bubbles: true });
+                    valorRef.current.dispatchEvent(evento);
+                  } catch (e) {
+                    console.error("Erro ao disparar evento input para valor padrão:", e);
+                  }
+                }
               }
             } catch (error) {
               console.error("Erro ao processar valor:", error);
+              // Valor padrão em caso de erro
               setFormData(prev => ({ ...prev, valor: '0,00' }));
+              
+              // Atualizar DOM
+              if (valorRef.current) {
+                valorRef.current.value = '0,00';
+                try {
+                  const evento = new Event('input', { bubbles: true });
+                  valorRef.current.dispatchEvent(evento);
+                } catch (e) {
+                  console.error("Erro ao disparar evento input para valor padrão (após erro):", e);
+                }
+              }
             }
           } else {
             // Valor padrão se não houver dado
             setFormData(prev => ({ ...prev, valor: '0,00' }));
+            
+            // Atualizar DOM
+            if (valorRef.current) {
+              valorRef.current.value = '0,00';
+              try {
+                const evento = new Event('input', { bubbles: true });
+                valorRef.current.dispatchEvent(evento);
+              } catch (e) {
+                console.error("Erro ao disparar evento input para valor padrão (sem dados):", e);
+              }
+            }
           }
           
           // Processar e formatar a data
           if (info.dataEmissao && info.dataEmissao.trim() !== '') {
             try {
-              let dataFormatada = info.dataEmissao;
+              console.log("Processando data bruta:", info.dataEmissao);
               
-              // Verificar formato - queremos YYYY-MM-DD para o input HTML
+              let dataFormatada = info.dataEmissao.trim();
+              let dataParaInput = '';  // Para o input HTML (YYYY-MM-DD)
+              let dataVisualizacao = ''; // Para exibição (DD/MM/YYYY)
               
               // Se estiver em formato DD/MM/YYYY (brasileiro)
               if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataFormatada)) {
                 const [dia, mes, ano] = dataFormatada.split('/');
-                dataFormatada = `${ano}-${mes}-${dia}`;
+                dataParaInput = `${ano}-${mes}-${dia}`;
+                dataVisualizacao = dataFormatada;
               } 
-              // Se estiver em outro formato com separadores
+              // Se estiver com outros separadores (- ou .)
               else if (/^\d{2}[-\.]\d{2}[-\.]\d{4}$/.test(dataFormatada)) {
                 const partes = dataFormatada.split(/[-\.]/);
-                dataFormatada = `${partes[2]}-${partes[1]}-${partes[0]}`;
+                dataParaInput = `${partes[2]}-${partes[1]}-${partes[0]}`;
+                dataVisualizacao = `${partes[0]}/${partes[1]}/${partes[2]}`;
               }
-              // Se já estiver no formato ISO (YYYY-MM-DD), manter como está
+              // Se já estiver no formato ISO (YYYY-MM-DD)
+              else if (/^\d{4}-\d{2}-\d{2}$/.test(dataFormatada)) {
+                dataParaInput = dataFormatada;
+                const [ano, mes, dia] = dataFormatada.split('-');
+                dataVisualizacao = `${dia}/${mes}/${ano}`;
+              }
+              // Outros formatos possíveis (YYYY/MM/DD)
+              else if (/^\d{4}\/\d{2}\/\d{2}$/.test(dataFormatada)) {
+                const [ano, mes, dia] = dataFormatada.split('/');
+                dataParaInput = `${ano}-${mes}-${dia}`;
+                dataVisualizacao = `${dia}/${mes}/${ano}`;
+              }
+              // Se não conseguiu interpretar o formato, usar a data atual
+              else {
+                const hoje = new Date();
+                const dia = String(hoje.getDate()).padStart(2, '0');
+                const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+                const ano = hoje.getFullYear();
+                
+                dataParaInput = `${ano}-${mes}-${dia}`;
+                dataVisualizacao = `${dia}/${mes}/${ano}`;
+              }
               
-              console.log("Data formatada para input:", dataFormatada);
-              setFormData(prev => ({ ...prev, data_emissao: dataFormatada }));
+              console.log("Data formatada para input HTML:", dataParaInput);
+              console.log("Data formatada para visualização:", dataVisualizacao);
+              
+              // PRIMEIRO NÍVEL: Atualizar estado React com formato para input
+              setFormData(prev => ({ ...prev, data_emissao: dataParaInput }));
+              
+              // SEGUNDO NÍVEL: Atualizar DOM diretamente
+              if (dataEmissaoRef.current) {
+                console.log("Atualizando DOM diretamente - Data Emissão:", dataParaInput);
+                dataEmissaoRef.current.value = dataParaInput;
+                
+                // Disparar evento
+                try {
+                  const evento = new Event('input', { bubbles: true });
+                  dataEmissaoRef.current.dispatchEvent(evento);
+                } catch (e) {
+                  console.error("Erro ao disparar evento input para data:", e);
+                }
+              }
             } catch (error) {
               console.error("Erro ao processar data:", error);
               // Data padrão (hoje) em caso de erro
-              const hoje = new Date().toISOString().split('T')[0];
-              setFormData(prev => ({ ...prev, data_emissao: hoje }));
+              const hoje = new Date();
+              const dia = String(hoje.getDate()).padStart(2, '0');
+              const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+              const ano = hoje.getFullYear();
+              const dataISOHoje = `${ano}-${mes}-${dia}`;
+              
+              setFormData(prev => ({ ...prev, data_emissao: dataISOHoje }));
+              
+              // Atualizar DOM
+              if (dataEmissaoRef.current) {
+                dataEmissaoRef.current.value = dataISOHoje;
+                try {
+                  const evento = new Event('input', { bubbles: true });
+                  dataEmissaoRef.current.dispatchEvent(evento);
+                } catch (e) {
+                  console.error("Erro ao disparar evento input para data padrão (após erro):", e);
+                }
+              }
             }
           } else {
             // Data padrão (hoje) se não houver dado
-            const hoje = new Date().toISOString().split('T')[0];
-            setFormData(prev => ({ ...prev, data_emissao: hoje }));
-          }
-          
-          // VERIFICAÇÃO FINAL: Garantir que o número do documento ainda é o link completo
-          // Isso é crítico para o funcionamento correto do sistema
-          if (formData.numero_documento !== cleanQrCode) {
-            console.warn("Número do documento foi alterado durante o processamento, corrigindo...");
-            setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
-          }
-          
-          // Verificar se temos acesso direto ao DOM para garantir o valor
-          if (numeroDocumentoRef.current) {
-            console.log("Atualizando valor do campo número do documento via DOM");
-            numeroDocumentoRef.current.value = cleanQrCode;
+            const hoje = new Date();
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const ano = hoje.getFullYear();
+            const dataISOHoje = `${ano}-${mes}-${dia}`;
             
-            // Disparar eventos para que o React detecte a mudança
-            try {
-              const evento = new Event('input', { bubbles: true });
-              numeroDocumentoRef.current.dispatchEvent(evento);
-            } catch (e) {
-              console.error("Erro ao disparar evento input:", e);
+            setFormData(prev => ({ ...prev, data_emissao: dataISOHoje }));
+            
+            // Atualizar DOM
+            if (dataEmissaoRef.current) {
+              dataEmissaoRef.current.value = dataISOHoje;
+              try {
+                const evento = new Event('input', { bubbles: true });
+                dataEmissaoRef.current.dispatchEvent(evento);
+              } catch (e) {
+                console.error("Erro ao disparar evento input para data padrão (sem dados):", e);
+              }
             }
           }
           
-          // Feedback de sucesso para o usuário
+          // VERIFICAÇÃO FINAL DE INTEGRIDADE: Verificar todos os valores e corrigir se necessário
+          
+          // 1. Verificar novamente número do documento (link completo)
+          if (formData.numero_documento !== linkCompleto) {
+            console.warn("🔴 ALERTA: Número do documento foi alterado, restaurando...");
+            setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+            
+            if (numeroDocumentoRef.current) {
+              numeroDocumentoRef.current.value = linkCompleto;
+              try {
+                const evento = new Event('input', { bubbles: true });
+                numeroDocumentoRef.current.dispatchEvent(evento);
+              } catch (e) {
+                console.error("Erro ao disparar evento input final para número do documento:", e);
+              }
+            }
+          }
+          
+          // Verificar se os campos estão corretamente preenchidos após 500ms
+          // Isso dá tempo para o React atualizar o DOM
+          setTimeout(() => {
+            // Verificar número do documento
+            if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== linkCompleto) {
+              console.warn("Correção final: Número do documento diferente do esperado");
+              numeroDocumentoRef.current.value = linkCompleto;
+            }
+            
+            // Verificar se o valor está formatado corretamente
+            if (valorRef.current && valorRef.current.value) {
+              // Se não tiver vírgula (formato brasileiro), ajustar
+              if (!valorRef.current.value.includes(',')) {
+                try {
+                  const valorNum = parseFloat(valorRef.current.value.replace(/[^\d\.]/g, ''));
+                  if (!isNaN(valorNum)) {
+                    valorRef.current.value = valorNum.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    });
+                  }
+                } catch (e) {
+                  console.error("Erro na verificação final do valor:", e);
+                }
+              }
+            }
+            
+          }, 500);
+          
+          // Feedback de sucesso para o usuário após verificação
           toast.success("Dados extraídos com sucesso!");
         })
         .catch((error) => {
@@ -375,36 +570,82 @@ export default function CadastrarDocumento() {
           setIsExtracting(false);
           
           // Mesmo em caso de erro, garantir que o número do documento (link completo) está preenchido
-          setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+          setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+          
+          // Atualizar número do documento via DOM mesmo no erro
+          if (numeroDocumentoRef.current) {
+            numeroDocumentoRef.current.value = linkCompleto;
+            try {
+              const evento = new Event('input', { bubbles: true });
+              numeroDocumentoRef.current.dispatchEvent(evento);
+            } catch (e) {
+              console.error("Erro ao disparar evento input para número do documento (após erro):", e);
+            }
+          }
           
           // Usar valores padrão para os campos restantes
-          const hoje = new Date().toISOString().split('T')[0];
+          const hoje = new Date();
+          const dia = String(hoje.getDate()).padStart(2, '0');
+          const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+          const ano = hoje.getFullYear();
+          const dataISOHoje = `${ano}-${mes}-${dia}`;
+          
           setFormData(prev => ({ 
             ...prev, 
             valor: '0,00',
-            data_emissao: hoje
+            data_emissao: dataISOHoje
           }));
+          
+          // Atualizar DOM para outros campos
+          if (valorRef.current) {
+            valorRef.current.value = '0,00';
+            try {
+              const evento = new Event('input', { bubbles: true });
+              valorRef.current.dispatchEvent(evento);
+            } catch (e) {
+              console.error("Erro ao disparar evento input para valor padrão (após erro API):", e);
+            }
+          }
+          
+          if (dataEmissaoRef.current) {
+            dataEmissaoRef.current.value = dataISOHoje;
+            try {
+              const evento = new Event('input', { bubbles: true });
+              dataEmissaoRef.current.dispatchEvent(evento);
+            } catch (e) {
+              console.error("Erro ao disparar evento input para data padrão (após erro API):", e);
+            }
+          }
           
           toast.error("Não foi possível extrair todos os dados. Os campos foram preenchidos com valores padrão.");
         })
         .finally(() => {
           // Verificação final para garantir que o número do documento é o link completo
-          if (formData.numero_documento !== cleanQrCode) {
-            console.warn("Corrigindo número do documento na finalização");
-            setFormData(prev => ({ ...prev, numero_documento: cleanQrCode }));
+          // após todo o processamento
+          if (formData.numero_documento !== linkCompleto) {
+            console.warn("🔴 ALERTA FINAL: Corrigindo número do documento na finalização");
+            setFormData(prev => ({ ...prev, numero_documento: linkCompleto }));
+            
+            if (numeroDocumentoRef.current) {
+              numeroDocumentoRef.current.value = linkCompleto;
+              try {
+                const evento = new Event('input', { bubbles: true });
+                numeroDocumentoRef.current.dispatchEvent(evento);
+              } catch (e) {
+                console.error("Erro ao disparar evento input no finally:", e);
+              }
+            }
           }
           
           setIsProcessingQrCode(false);
         });
     } catch (error) {
-      console.error("Erro ao processar QR code:", error);
-      
-      // Limpar estados em caso de erro
-      setIsExtracting(false);
+      console.error("Erro geral ao processar QR code:", error);
       setIsProcessingQrCode(false);
-      toast.error("Erro ao processar QR code. Tente novamente.");
+      setIsExtracting(false);
+      toast.error("Ocorreu um erro ao processar o QR code");
     }
-  }, [setFormData, isProcessingQrCode, formData.numero_documento]);
+  }, [formData.numero_documento, isProcessingQrCode, setFormData, setIsExtracting, setIsProcessingQrCode, setShowQrCodeScanner]);
 
   // Função para lidar com erros no scanner
   const handleScannerError = useCallback((error: any) => {
@@ -526,7 +767,7 @@ export default function CadastrarDocumento() {
       // Criar registro do documento no banco de dados
       const { error: insertError } = await supabase
         .from('documentos')
-        .insert(documentoData);
+        .insert(documentoData as any);
       
       if (insertError) {
         console.error('Erro ao inserir documento:', insertError);

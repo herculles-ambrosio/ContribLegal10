@@ -7,23 +7,27 @@ Implementação de uma solução radical para resolver os problemas persistentes
 3. Extrair e preencher corretamente a data de emissão no campo "Data de Emissão"
 
 ## Mudanças Recentes
-- Implementação de uma abordagem híbrida que manipula diretamente o DOM além do gerenciamento de estado do React
-- Adição de referências diretas (useRef) para cada campo de input para permitir manipulação DOM
-- Criação de funções especializadas para processamento de valores em diferentes formatos
-- Implementação de redundâncias múltiplas para garantir a preservação dos valores
+- Implementação de uma abordagem híbrida que combina manipulação direta do DOM com gerenciamento de estado do React
+- Adição de múltiplas camadas de redundância para garantir a preservação do link completo do QR code
+- Implementação de extração de dados diretamente dos parâmetros do link como fallback
 - Adição de verificações de integridade com auto-correção após o preenchimento dos campos
-- Melhorias no sistema de logs de depuração com separação clara das etapas de processamento
+- Normalização rigorosa dos formatos de valor (R$) e data (DD/MM/AAAA)
+- Atualização em tempo real dos campos via DOM e estado React simultaneamente
+- Adição de verificação final com timeout para garantir integridade dos dados após processamento
+- Pré-processamento e pós-processamento de dados com múltiplas camadas de segurança
+- Aprimoramento do serviço de extração com redundância e fallbacks em todos os pontos
 
 ## Próximos Passos
 - Testar a nova implementação em diferentes navegadores e dispositivos
 - Monitorar os logs de produção para verificar se os problemas foram resolvidos
-- Refinar a solução após análise de como o sistema se comporta em ambiente de produção
+- Verificar o comportamento com diferentes tipos e formatos de QR codes de cupons fiscais
 - Considerar a remoção das redundâncias e logs extensivos após confirmação da estabilidade
-- Avaliar o impacto da solução no desempenho e experiência do usuário
+- Refinar a experiência do usuário com feedback visual durante o processo de extração
 
 ## Decisões Ativas
-- Adotar uma abordagem radical que combina manipulação do DOM e gerenciamento de estado React
-- Implementar múltiplas camadas de verificação e correção automática para garantir a integridade dos dados
-- Priorizar a garantia de funcionamento sobre a elegância do código
+- Adotar uma abordagem radical com múltiplas camadas de redundância para garantir a integridade dos dados
+- Manipular diretamente o DOM além do gerenciamento de estado do React para garantir consistência
+- Implementar verificações de integridade em diferentes momentos do ciclo de vida do componente
+- Extrair dados do link como primeira camada de defesa, antes mesmo de acessar a página
 - Fornecer valores padrão para campos críticos (data atual, R$0,00) quando a extração falhar
 - Manter logs detalhados em produção para monitoramento e diagnóstico contínuo 
