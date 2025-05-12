@@ -8,9 +8,10 @@ import { FaSync, FaLightbulb, FaSearch, FaRedo } from 'react-icons/fa';
 interface QrCodeScannerProps {
   onScanSuccess: (result: string) => void;
   onScanError?: (error: any) => void;
+  onDebugLog?: (message: string) => void;
 }
 
-export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScannerProps) {
+export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }: QrCodeScannerProps) {
   const [cameras, setCameras] = useState<{id: string, label: string}[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
@@ -20,10 +21,20 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = "qr-reader";
 
+  // Função para logs de depuração
+  const logDebug = (message: string) => {
+    console.log(`QR-SCANNER-DEBUG: ${message}`);
+    if (onDebugLog) {
+      onDebugLog(`QR-SCANNER: ${message}`);
+    }
+  };
+
   // Inicializar o scanner e obter lista de câmeras
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    logDebug("Inicializando QrCodeScanner");
+    
     const initScanner = async () => {
       try {
         // Criar uma instância do scanner
@@ -173,12 +184,51 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
           scannerRef.current.stop()
             .then(() => {
               setIsScanning(false);
-              // Chamar o callback de sucesso com o link do QR code
-              onScanSuccess(decodedText);
+              
+              // Adicionar logs detalhados
+              logDebug(`QR Code lido com sucesso: ${decodedText}`);
+              
+              try {
+                // Usar um timeout para garantir que o componente principal tenha tempo de processar
+                setTimeout(() => {
+                  logDebug(`Enviando resultado para componente pai: ${decodedText}`);
+                  
+                  // Chamar o callback de sucesso com o link do QR code
+                  onScanSuccess(decodedText);
+                  
+                  // REDUNDÂNCIA: Se existir um formulário com campo de número de documento, 
+                  // tenta definir diretamente via DOM para garantir
+                  try {
+                    const numeroDocumentoInput = document.querySelector('input[name="numero_documento"]') as HTMLInputElement;
+                    if (numeroDocumentoInput) {
+                      logDebug(`Tentando definir diretamente o valor no campo via DOM: ${decodedText}`);
+                      numeroDocumentoInput.value = decodedText;
+                      
+                      // Disparar eventos para notificar o React sobre a mudança
+                      const event = new Event('input', { bubbles: true });
+                      numeroDocumentoInput.dispatchEvent(event);
+                      
+                      const changeEvent = new Event('change', { bubbles: true });
+                      numeroDocumentoInput.dispatchEvent(changeEvent);
+                    }
+                  } catch (domError) {
+                    logDebug(`Erro ao manipular DOM diretamente: ${domError}`);
+                  }
+                }, 100);
+              } catch (callbackError) {
+                logDebug(`Erro ao chamar callback de sucesso: ${callbackError}`);
+                // Tentar novamente em caso de erro
+                setTimeout(() => onScanSuccess(decodedText), 500);
+              }
             })
-            .catch(error => console.error('Erro ao parar scanner após sucesso:', error));
+            .catch(error => {
+              logDebug(`Erro ao parar scanner após sucesso: ${error}`);
+              // Chamar o callback mesmo se houver erro ao parar o scanner
+              onScanSuccess(decodedText);
+            });
         } else {
           // Chamar o callback mesmo se o scanner não estiver disponível
+          logDebug("Scanner não disponível, mas enviando resultado mesmo assim");
           onScanSuccess(decodedText);
         }
       };
@@ -263,94 +313,51 @@ export default function QrCodeScanner({ onScanSuccess, onScanError }: QrCodeScan
   };
 
   return (
-    <div className="qr-scanner-wrapper">
-      <div 
-        id={scannerContainerId} 
-        className="w-full h-[400px] overflow-hidden bg-gray-100 rounded-lg relative"
-      ></div>
+    <div className="qr-scanner-container">
+      <div id={scannerContainerId} className="qr-reader-container"></div>
       
-      <div className="text-center mt-2 mb-2">
-        <p className={`text-sm ${isScanning ? 'text-blue-600' : 'text-red-500'}`}>
+      <div className="mt-4 text-center text-sm">
+        <p className={`mb-2 ${isScanning ? 'text-blue-500' : 'text-gray-500'}`}>
           {message}
         </p>
-      </div>
-
-      <div className="flex justify-center mt-2 mb-4 gap-2">
-        {cameras.length > 1 && (
-          <Button 
+        
+        <div className="flex justify-center space-x-2 mt-3">
+          {cameras.length > 1 && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={switchCamera}
+              className="text-xs py-1 px-3 flex items-center"
+              aria-label="Alternar câmera"
+            >
+              <FaSync className="mr-1" size={14} />
+              Trocar Câmera
+            </Button>
+          )}
+          
+          <Button
             type="button"
-            variant="info"
-            onClick={switchCamera}
-            className="text-sm flex items-center gap-2"
-            title="Alternar entre câmeras disponíveis"
+            variant="secondary"
+            onClick={toggleTorch}
+            className="text-xs py-1 px-3 flex items-center"
+            aria-label="Lanterna"
           >
-            <FaSync size={14} />
-            Trocar Câmera
+            <FaLightbulb className={`mr-1 ${torchEnabled ? 'text-yellow-400' : ''}`} size={14} />
+            {torchEnabled ? 'Desligar Luz' : 'Ligar Lanterna'}
           </Button>
-        )}
-        
-        <Button 
-          type="button"
-          variant={torchEnabled ? "warning" : "info"}
-          onClick={toggleTorch}
-          className="text-sm flex items-center gap-2"
-          title="Ligar/Desligar lanterna"
-        >
-          <FaLightbulb size={14} />
-          {torchEnabled ? 'Desligar Flash' : 'Ligar Flash'}
-        </Button>
-        
-        <Button 
-          type="button"
-          variant="primary"
-          onClick={restartScanner}
-          className="text-sm flex items-center gap-2"
-          title="Tentar novamente"
-        >
-          <FaRedo size={14} />
-          Tentar Novamente
-        </Button>
+          
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={restartScanner}
+            className="text-xs py-1 px-3 flex items-center"
+            aria-label="Reiniciar"
+          >
+            <FaRedo className="mr-1" size={14} />
+            Tentar Novamente
+          </Button>
+        </div>
       </div>
-
-      <style jsx>{`
-        .qr-scanner-wrapper {
-          width: 100%;
-        }
-
-        :global(#${scannerContainerId}) {
-          width: 100% !important;
-          border: none !important;
-          border-radius: 0.5rem !important;
-          overflow: hidden !important;
-        }
-
-        :global(#${scannerContainerId} video) {
-          width: 100% !important;
-          height: 100% !important;
-          object-fit: cover !important;
-          border-radius: 0.375rem !important;
-        }
-
-        :global(#${scannerContainerId}__scan_region) {
-          background: rgba(0, 0, 0, 0.1) !important;
-          overflow: hidden !important;
-          width: 100% !important;
-          height: 100% !important;
-        }
-
-        :global(#${scannerContainerId}__dashboard) {
-          display: none !important;
-        }
-        
-        /* Aumentar o contraste e visibilidade do quadro de escaneamento */
-        :global(#${scannerContainerId}__scan_region_highlight) {
-          width: 80% !important;
-          height: 80% !important;
-          border: 4px solid #60a5fa !important;
-          border-radius: 8px !important;
-          box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.4) !important;
-        }
-      `}</style>
     </div>
   );
 } 

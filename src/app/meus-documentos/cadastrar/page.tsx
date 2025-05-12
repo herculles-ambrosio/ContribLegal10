@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -40,6 +40,12 @@ export default function CadastrarDocumento() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMessage, setExtractionMessage] = useState('Extraindo dados do cupom fiscal...');
+  const [scannerLogs, setScannerLogs] = useState<string[]>([]); // Para armazenar logs do scanner
+
+  // Refs para acessar diretamente os inputs do DOM
+  const numeroDocumentoRef = useRef<HTMLInputElement>(null);
+  const valorRef = useRef<HTMLInputElement>(null);
+  const dataEmissaoRef = useRef<HTMLInputElement>(null);
 
   const tiposDocumento = [
     { value: 'nota_servico', label: 'Nota Fiscal de Serviço' },
@@ -188,20 +194,41 @@ export default function CadastrarDocumento() {
     console.log('DEBUG > ============ INÍCIO DO PROCESSAMENTO DO QR CODE ============');
     console.log('DEBUG > QR Code detectado (valor original):', result);
     
-    // Normalizar a URL para remover espaços e caracteres estranhos
-    const normalizedResult = result.trim();
-    console.log('DEBUG > QR Code normalizado:', normalizedResult);
+    // Salvar o QR code original para uso em caso de problemas
+    const originalQrCode = result.trim();
+    console.log('DEBUG > QR Code normalizado:', originalQrCode);
     
-    // IMPORTANTE: Sempre manter o link completo no campo de número do documento
-    // Este é o comportamento desejado conforme os requisitos
-    console.log('DEBUG > Definindo número_documento com o link completo ANTES:', normalizedResult);
+    // SOLUÇÃO RADICAL: Definir o valor diretamente via DOM além do React state
+    if (numeroDocumentoRef.current) {
+      console.log('DEBUG > Definindo número_documento via ref DOM:', originalQrCode);
+      numeroDocumentoRef.current.value = originalQrCode;
+    }
     
-    // FORÇAR definição do número do documento como link completo
+    // Também atualizar via state para manter consistência
+    console.log('DEBUG > Definindo número_documento via setState:', originalQrCode);
     setFormData(prev => {
-      const newState = { ...prev, numero_documento: normalizedResult };
+      const newState = { ...prev, numero_documento: originalQrCode };
       console.log('DEBUG > Estado do formulário atualizado (número documento):', newState);
       return newState;
     });
+    
+    // REDUNDÂNCIA: Definir novamente após um pequeno delay
+    setTimeout(() => {
+      // Verificar se o valor foi realmente definido
+      console.log('DEBUG > Verificando se o valor do número do documento foi mantido...');
+      
+      // Verificar via DOM
+      if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== originalQrCode) {
+        console.log('DEBUG > Valor DOM perdido! Redefinindo número_documento via DOM:', originalQrCode);
+        numeroDocumentoRef.current.value = originalQrCode;
+      }
+      
+      // Verificar via state
+      if (formData.numero_documento !== originalQrCode) {
+        console.log('DEBUG > Valor state perdido! Redefinindo número_documento via setState:', originalQrCode);
+        setFormData(prev => ({ ...prev, numero_documento: originalQrCode }));
+      }
+    }, 300);
     
     // Fechar o scanner automaticamente
     setShowScanner(false);
@@ -212,186 +239,75 @@ export default function CadastrarDocumento() {
     
     try {
       // Tentar extrair dados adicionais do cupom fiscal
-      console.log('DEBUG > Iniciando extração de dados do cupom fiscal:', normalizedResult);
-      const fiscalReceiptData = await extractDataFromFiscalReceipt(normalizedResult);
+      console.log('DEBUG > Iniciando extração de dados do cupom fiscal:', originalQrCode);
+      const fiscalReceiptData = await extractDataFromFiscalReceipt(originalQrCode);
       console.log('DEBUG > Dados extraídos completos:', JSON.stringify(fiscalReceiptData));
       
       // Esconder modal de carregamento
       setIsExtracting(false);
       
-      // Atualizar os campos com os dados extraídos (se houver)
-      console.log('DEBUG > Preparando atualização dos campos do formulário...');
-      const formUpdates: any = {};
-
-      // GARANTIA DUPLA - número do documento é sempre o link completo
-      formUpdates.numero_documento = normalizedResult;
-      console.log('DEBUG > Garantindo número_documento definido em formUpdates:', normalizedResult);
-
-      // Processar o valor do cupom
+      // Atualizações para cada campo
+      handleFieldUpdate('numero_documento', originalQrCode);
+      
+      // Processar valor
       if (fiscalReceiptData.valor) {
         try {
-          console.log('DEBUG > Valor recebido da API antes do processamento:', fiscalReceiptData.valor);
-          // Primeiro limpar o valor para garantir o formato correto
-          let valorLimpo = String(fiscalReceiptData.valor).trim();
-          console.log('DEBUG > Valor após limpeza:', valorLimpo);
-          
-          // Garantir que estamos lidando com um valor numérico válido
-          let valorNumerico: number;
-          
-          // Se estiver no formato brasileiro (vírgula como separador decimal)
-          if (valorLimpo.includes(',')) {
-            // Remover pontos de milhar e substituir vírgula por ponto
-            valorNumerico = parseFloat(valorLimpo.replace(/\./g, '').replace(',', '.'));
-            console.log('DEBUG > Valor convertido de formato BR:', valorNumerico);
-          } 
-          // Se estiver no formato americano (ponto como separador decimal)
-          else if (valorLimpo.includes('.')) {
-            valorNumerico = parseFloat(valorLimpo);
-            console.log('DEBUG > Valor convertido de formato US:', valorNumerico);
-          } 
-          // Se for apenas números, assumir valor em centavos ou inteiro dependendo do tamanho
-          else if (/^\d+$/.test(valorLimpo)) {
-            const valorInt = parseInt(valorLimpo, 10);
-            // Se for um número grande (mais de 3 dígitos), provavelmente é centavos
-            valorNumerico = valorInt > 999 ? valorInt / 100 : valorInt;
-            console.log('DEBUG > Valor convertido de formato numérico:', valorInt, '→', valorNumerico);
-          } else {
-            // Tentar converter diretamente como último recurso
-            valorNumerico = parseFloat(valorLimpo);
-            console.log('DEBUG > Valor convertido forçadamente:', valorNumerico);
-          }
-          
-          console.log('DEBUG > Valor após conversão para número:', valorNumerico);
-          
+          console.log('DEBUG > Processando valor:', fiscalReceiptData.valor);
+          // Converter para formato brasileiro
+          let valorNumerico = processarValor(fiscalReceiptData.valor);
           if (!isNaN(valorNumerico)) {
-            // Formatar para exibição no formato brasileiro
-            formUpdates.valor = valorNumerico.toLocaleString('pt-BR', {
+            const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
             });
-            console.log('DEBUG > Valor formatado para o formulário:', formUpdates.valor);
-          } else {
-            console.warn('DEBUG > Valor extraído não é um número válido:', fiscalReceiptData.valor);
             
-            // TENTATIVA ADICIONAL - usar um valor padrão se não puder converter
-            formUpdates.valor = '0,00';
-            console.log('DEBUG > Usando valor padrão 0,00');
+            // Atualizar o campo de valor
+            handleFieldUpdate('valor', valorFormatado);
+          } else {
+            // Valor padrão se não conseguir processar
+            handleFieldUpdate('valor', '0,00');
           }
         } catch (e) {
-          console.error('DEBUG > Erro ao processar valor extraído:', e);
-          // TENTATIVA ADICIONAL - usar um valor padrão em caso de erro
-          formUpdates.valor = '0,00';
-          console.log('DEBUG > Usando valor padrão 0,00 após erro');
+          console.error('DEBUG > Erro ao processar valor:', e);
+          handleFieldUpdate('valor', '0,00');
         }
       } else {
-        console.log('DEBUG > Nenhum valor recebido da API');
-        // TENTATIVA ADICIONAL - usar um valor padrão se não receber nada
-        formUpdates.valor = '0,00';
-        console.log('DEBUG > Usando valor padrão 0,00 por falta de dados');
+        // Valor padrão se não tiver valor
+        handleFieldUpdate('valor', '0,00');
       }
       
-      // Processar a data de emissão
+      // Processar data de emissão
       if (fiscalReceiptData.dataEmissao) {
         try {
-          console.log('DEBUG > Data recebida da API antes do processamento:', fiscalReceiptData.dataEmissao);
-          
-          // Verificar diferentes formatos de data
-          let dataFormatada = '';
-          const dataOriginal = fiscalReceiptData.dataEmissao.trim();
-          
-          // Formato brasileiro DD/MM/AAAA
-          const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-          const matchBR = dataOriginal.match(formatoBR);
-          
-          if (matchBR) {
-            const [_, dia, mes, ano] = matchBR;
-            dataFormatada = `${ano}-${mes}-${dia}`;
-            console.log('DEBUG > Data convertida de formato BR:', dataFormatada);
-          } else {
-            // Tentar outros formatos (DD-MM-AAAA, AAAA-MM-DD)
-            const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
-            const formatoISO = /^(\d{4})-(\d{2})-(\d{2})$/;
-            
-            const matchTraco = dataOriginal.match(formatoTraco);
-            const matchISO = dataOriginal.match(formatoISO);
-            
-            if (matchTraco) {
-              const [_, dia, mes, ano] = matchTraco;
-              dataFormatada = `${ano}-${mes}-${dia}`;
-              console.log('DEBUG > Data convertida de formato com traço:', dataFormatada);
-            } else if (matchISO) {
-              dataFormatada = dataOriginal; // Já está no formato correto
-              console.log('DEBUG > Data já está em formato ISO:', dataFormatada);
-            }
-          }
-          
+          console.log('DEBUG > Processando data:', fiscalReceiptData.dataEmissao);
+          // Converter para formato YYYY-MM-DD
+          const dataFormatada = processarData(fiscalReceiptData.dataEmissao);
           if (dataFormatada) {
-            // Verificar se a data é válida antes de atribuir
-            const dataObj = new Date(dataFormatada);
-            if (!isNaN(dataObj.getTime())) {
-              formUpdates.data_emissao = dataFormatada;
-              console.log('DEBUG > Data formatada para o campo:', formUpdates.data_emissao);
-            } else {
-              console.warn('DEBUG > Data inválida após formatação:', dataFormatada);
-              
-              // TENTATIVA ADICIONAL - usar a data atual se não puder formatar
-              const hoje = new Date();
-              formUpdates.data_emissao = hoje.toISOString().split('T')[0];
-              console.log('DEBUG > Usando data atual por falha na formatação:', formUpdates.data_emissao);
-            }
+            // Atualizar o campo de data
+            handleFieldUpdate('data_emissao', dataFormatada);
           } else {
-            console.warn('DEBUG > Formato de data não reconhecido:', dataOriginal);
-            
-            // TENTATIVA ADICIONAL - usar a data atual se não reconhecer o formato
-            const hoje = new Date();
-            formUpdates.data_emissao = hoje.toISOString().split('T')[0];
-            console.log('DEBUG > Usando data atual por formato não reconhecido:', formUpdates.data_emissao);
+            // Data padrão (hoje) se não conseguir processar
+            const hoje = new Date().toISOString().split('T')[0];
+            handleFieldUpdate('data_emissao', hoje);
           }
         } catch (e) {
           console.error('DEBUG > Erro ao processar data:', e);
-          
-          // TENTATIVA ADICIONAL - usar a data atual em caso de erro
-          const hoje = new Date();
-          formUpdates.data_emissao = hoje.toISOString().split('T')[0];
-          console.log('DEBUG > Usando data atual após erro:', formUpdates.data_emissao);
+          const hoje = new Date().toISOString().split('T')[0];
+          handleFieldUpdate('data_emissao', hoje);
         }
       } else {
-        console.log('DEBUG > Nenhuma data recebida da API');
-        
-        // TENTATIVA ADICIONAL - usar a data atual se não receber nada
-        const hoje = new Date();
-        formUpdates.data_emissao = hoje.toISOString().split('T')[0];
-        console.log('DEBUG > Usando data atual por falta de dados:', formUpdates.data_emissao);
+        // Data padrão (hoje) se não tiver data
+        const hoje = new Date().toISOString().split('T')[0];
+        handleFieldUpdate('data_emissao', hoje);
       }
       
-      // Verificar se conseguimos extrair algum dado
-      const fieldsExtracted = [];
-      if (formUpdates.valor !== undefined) fieldsExtracted.push('valor');
-      if (formUpdates.data_emissao) fieldsExtracted.push('data');
+      // Feedback ao usuário
+      toast.success('QR Code processado com sucesso! Verifique os dados preenchidos.');
       
-      console.log('DEBUG > Campos atualizados:', formUpdates);
-      console.log('DEBUG > Campos extraídos:', fieldsExtracted);
-      
-      // FORÇAR ATUALIZAÇÃO DO FORMULÁRIO - Garantir que as atualizações sejam aplicadas
-      console.log('DEBUG > Atualizando estado do formulário com:', formUpdates);
-      
-      setFormData(prev => {
-        const newState = { ...prev, ...formUpdates };
-        console.log('DEBUG > Novo estado do formulário após atualização:', newState);
-        return newState;
-      });
-      
-      // VERIFICAR ESTADO APÓS ATUALIZAÇÃO - para confirmar que foi aplicado corretamente
+      // VERIFICAÇÃO FINAL - garantir que os valores foram aplicados
       setTimeout(() => {
-        console.log('DEBUG > Estado do formulário após 100ms:', formData);
-      }, 100);
-      
-      // Mostrar feedback ao usuário
-      if (fieldsExtracted.length > 0) {
-        toast.success(`Dados extraídos com sucesso: ${fieldsExtracted.join(', ')}`);
-      } else {
-        toast.success('QR Code lido! Não foi possível extrair dados adicionais. Preencha os campos manualmente.');
-      }
+        verificarPreenchimentoCampos(originalQrCode);
+      }, 500);
       
       console.log('DEBUG > ============ FIM DO PROCESSAMENTO DO QR CODE ============');
       
@@ -399,18 +315,162 @@ export default function CadastrarDocumento() {
       // Esconder modal de carregamento em caso de erro
       setIsExtracting(false);
       console.error('DEBUG > Erro crítico ao extrair dados:', extractionError);
+      toast.error('Falha ao extrair dados do QR code. Preenchendo campos obrigatórios.');
       
-      // TENTATIVA ADICIONAL - recuperar de erro crítico, mantendo pelo menos o número do documento
-      console.log('DEBUG > Recuperando de erro crítico, atualizando número do documento apenas');
+      // Mesmo em caso de erro, garantir que o número do documento seja preenchido
+      handleFieldUpdate('numero_documento', originalQrCode);
       
-      setFormData(prev => {
-        return { ...prev, numero_documento: normalizedResult };
-      });
-      
-      toast.error('Falha ao extrair dados do QR code. Preencha manualmente.');
+      // Preencher com valores padrão em caso de erro
+      handleFieldUpdate('valor', '0,00');
+      const hoje = new Date().toISOString().split('T')[0];
+      handleFieldUpdate('data_emissao', hoje);
       
       console.log('DEBUG > ============ FIM COM ERRO DO PROCESSAMENTO DO QR CODE ============');
     }
+  };
+  
+  // Função para processar valor em qualquer formato para número
+  const processarValor = (valorStr: string): number => {
+    console.log('DEBUG > Processando valor bruto:', valorStr);
+    
+    // Limpar o valor
+    const valorLimpo = String(valorStr).trim();
+    
+    // Verificar diferentes formatos
+    if (valorLimpo.includes(',')) {
+      // Formato brasileiro: 1.234,56
+      return parseFloat(valorLimpo.replace(/\./g, '').replace(',', '.'));
+    } else if (valorLimpo.includes('.')) {
+      // Formato americano: 1,234.56
+      return parseFloat(valorLimpo);
+    } else if (/^\d+$/.test(valorLimpo)) {
+      // Apenas números, verificar se é centavos ou inteiro
+      const valorInt = parseInt(valorLimpo, 10);
+      return valorInt > 999 ? valorInt / 100 : valorInt;
+    }
+    
+    // Última tentativa - converter diretamente
+    return parseFloat(valorLimpo);
+  };
+  
+  // Função para processar data em qualquer formato para YYYY-MM-DD
+  const processarData = (dataStr: string): string | null => {
+    console.log('DEBUG > Processando data bruta:', dataStr);
+    
+    // Limpar a data
+    const dataLimpa = String(dataStr).trim();
+    
+    // Verificar diferentes formatos
+    // Formato DD/MM/YYYY
+    const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    const matchBR = dataLimpa.match(formatoBR);
+    if (matchBR) {
+      const [_, dia, mes, ano] = matchBR;
+      return `${ano}-${mes}-${dia}`;
+    }
+    
+    // Formato DD-MM-YYYY
+    const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
+    const matchTraco = dataLimpa.match(formatoTraco);
+    if (matchTraco) {
+      const [_, dia, mes, ano] = matchTraco;
+      return `${ano}-${mes}-${dia}`;
+    }
+    
+    // Formato YYYY-MM-DD (já no formato correto)
+    const formatoISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+    const matchISO = dataLimpa.match(formatoISO);
+    if (matchISO) {
+      return dataLimpa;
+    }
+    
+    // Não conseguiu reconhecer o formato
+    return null;
+  };
+  
+  // Função para atualizar campos com dupla garantia (state + DOM)
+  const handleFieldUpdate = (fieldName: string, value: string) => {
+    console.log(`DEBUG > Atualizando campo ${fieldName} com valor:`, value);
+    
+    // Atualizar via state
+    setFormData(prev => {
+      const newState = { ...prev, [fieldName]: value };
+      console.log(`DEBUG > Novo estado para ${fieldName}:`, newState);
+      return newState;
+    });
+    
+    // Atualizar via DOM direto
+    try {
+      // Selecionar o elemento apropriado
+      let inputElement: HTMLInputElement | null = null;
+      
+      if (fieldName === 'numero_documento' && numeroDocumentoRef.current) {
+        inputElement = numeroDocumentoRef.current;
+      } else if (fieldName === 'valor' && valorRef.current) {
+        inputElement = valorRef.current;
+      } else if (fieldName === 'data_emissao' && dataEmissaoRef.current) {
+        inputElement = dataEmissaoRef.current;
+      } else {
+        // Buscar pelo nome do campo como fallback
+        inputElement = document.querySelector(`input[name="${fieldName}"]`) as HTMLInputElement;
+      }
+      
+      if (inputElement) {
+        console.log(`DEBUG > Atualizando DOM direto para ${fieldName}:`, value);
+        inputElement.value = value;
+        
+        // Disparar eventos necessários para que o React detecte a mudança
+        const event = new Event('input', { bubbles: true });
+        inputElement.dispatchEvent(event);
+        
+        const changeEvent = new Event('change', { bubbles: true });
+        inputElement.dispatchEvent(changeEvent);
+      } else {
+        console.log(`DEBUG > Elemento DOM não encontrado para ${fieldName}`);
+      }
+    } catch (error) {
+      console.error(`DEBUG > Erro ao atualizar DOM para ${fieldName}:`, error);
+    }
+  };
+  
+  // Verificação final para garantir que os campos foram preenchidos corretamente
+  const verificarPreenchimentoCampos = (qrCodeOriginal: string) => {
+    console.log('DEBUG > Verificação final dos campos:');
+    
+    // Verificar número do documento
+    if (formData.numero_documento !== qrCodeOriginal) {
+      console.log('DEBUG > ERRO: número_documento não manteve o valor correto!');
+      console.log(`DEBUG > Esperado: ${qrCodeOriginal}`);
+      console.log(`DEBUG > Atual (state): ${formData.numero_documento}`);
+      
+      // Tentar corrigir
+      handleFieldUpdate('numero_documento', qrCodeOriginal);
+    } else {
+      console.log('DEBUG > OK: número_documento tem o valor correto');
+    }
+    
+    // Verificar se valor está preenchido
+    if (!formData.valor) {
+      console.log('DEBUG > ERRO: valor está vazio!');
+      handleFieldUpdate('valor', '0,00');
+    } else {
+      console.log(`DEBUG > OK: valor está preenchido com ${formData.valor}`);
+    }
+    
+    // Verificar se data está preenchida
+    if (!formData.data_emissao) {
+      console.log('DEBUG > ERRO: data_emissao está vazia!');
+      const hoje = new Date().toISOString().split('T')[0];
+      handleFieldUpdate('data_emissao', hoje);
+    } else {
+      console.log(`DEBUG > OK: data_emissao está preenchida com ${formData.data_emissao}`);
+    }
+  };
+  
+  // Handler para logs de depuração do scanner
+  const handleScannerDebugLog = (message: string) => {
+    console.log(message);
+    setScannerLogs(prev => [...prev, message]);
   };
 
   const handleQrCodeError = (error: any) => {
@@ -679,6 +739,7 @@ export default function CadastrarDocumento() {
                   required
                   variant="dark"
                   className="pr-24"
+                  ref={numeroDocumentoRef}
                 />
                
                 <div className="absolute right-2 top-9 flex items-center space-x-2 z-10">
@@ -728,6 +789,7 @@ export default function CadastrarDocumento() {
                     [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:hover:opacity-100
                     sm:text-base text-sm`}
                   required
+                  ref={dataEmissaoRef}
                 />
                 {errors.data_emissao && (
                   <p className="mt-2 text-sm text-red-600">{errors.data_emissao}</p>
@@ -754,6 +816,7 @@ export default function CadastrarDocumento() {
                     onChange={handleChange}
                     onBlur={handleValorBlur}
                     required
+                    ref={valorRef}
                   />
                 </div>
                 {errors.valor && (
@@ -848,6 +911,7 @@ export default function CadastrarDocumento() {
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeResult}
                   onScanError={handleQrCodeError}
+                  onDebugLog={handleScannerDebugLog}
                 />
                 <div className="mt-3 text-center">
                   <p className="text-xs text-gray-500">Se estiver com dificuldades para ler o QR Code, tente usar os botões acima para alternativas.</p>
