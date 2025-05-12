@@ -45,12 +45,14 @@ export async function POST(request: NextRequest) {
 
     // Normalizar URL - remover espaços e caracteres estranhos
     const normalizedLink = qrCodeLink.trim();
-    console.log('API - Link normalizado recebido:', normalizedLink);
+    console.log('API-DEBUG > Link normalizado recebido:', normalizedLink);
     
     // IMPORTANTE: Inicialmente, o numeroDocumento DEVE ser o próprio link
     // Isso garante que, mesmo se as extrações avançadas não funcionarem,
     // o link completo será retornado como numeroDocumento
     let numeroDocumento = normalizedLink;
+    console.log('API-DEBUG > Número do documento inicial (link completo):', numeroDocumento);
+    
     let valor = '';
     let dataEmissao = '';
     
@@ -60,17 +62,17 @@ export async function POST(request: NextRequest) {
       const valorMatch = normalizedLink.match(/(?:vNF=|valorNF=|valor=|total=)([0-9,.]+)/i);
       if (valorMatch && valorMatch[1]) {
         valor = valorMatch[1].replace(',', '.');
-        console.log('API - Valor extraído do link:', valor);
+        console.log('API-DEBUG > Valor extraído do link:', valor);
       }
       
       // Tentar extrair data do link
       const dataMatch = normalizedLink.match(/(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i);
       if (dataMatch && dataMatch[1]) {
         dataEmissao = dataMatch[1].replace(/-/g, '/');
-        console.log('API - Data extraída do link:', dataEmissao);
+        console.log('API-DEBUG > Data extraída do link:', dataEmissao);
       }
     } catch (linkExtractionError) {
-      console.error('API - Erro ao extrair dados do link:', linkExtractionError);
+      console.error('API-DEBUG > Erro ao extrair dados do link:', linkExtractionError);
     }
 
     // Aumentar timeout para URLs lentas
@@ -472,9 +474,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Ao final de toda extração, garantir que numeroDocumento ainda seja o link original
-      // Isso é importante para o caso de alguma lógica de extração ter modificado o valor
+      // GARANTIA: Ao final de toda extração, garantir que numeroDocumento é o link original
+      // Isso é crítico para o funcionamento correto das regras de negócio
       numeroDocumento = normalizedLink;
+      console.log('API-DEBUG > Garantindo número do documento como link completo:', numeroDocumento);
       
       // Montar objeto com os resultados encontrados
       // IMPORTANTE: numeroDocumento DEVE ser o link completo
@@ -484,7 +487,7 @@ export async function POST(request: NextRequest) {
         dataEmissao
       };
       
-      console.log('API - Dados extraídos finais:', dados);
+      console.log('API-DEBUG > Dados extraídos finais (enviando para cliente):', JSON.stringify(dados));
       
       // Retornar os dados encontrados, mesmo que alguns estejam vazios
       return NextResponse.json(dados, {
