@@ -1,34 +1,102 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeScannerState, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import Button from '@/components/ui/Button';
 import { FaSync, FaLightbulb, FaSearch, FaRedo } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 
 interface QrCodeScannerProps {
-  onScanSuccess: (result: string) => void;
+  onScanSuccess: (qrCodeData: string) => void;
   onScanError?: (error: any) => void;
   onDebugLog?: (message: string) => void;
 }
 
-export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }: QrCodeScannerProps) {
+const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ 
+  onScanSuccess, 
+  onScanError,
+  onDebugLog 
+}) => {
   const [cameras, setCameras] = useState<{id: string, label: string}[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
-  const [isScanning, setIsScanning] = useState(false);
+  const [isScanning, setIsScanning] = useState(true);
+  const [hasScanned, setHasScanned] = useState(false);
   const [message, setMessage] = useState<string>('Iniciando câmera...');
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [scanAttempts, setScanAttempts] = useState(0);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const scannerContainerId = "qr-reader";
 
-  // Função para logs de depuração
-  const logDebug = (message: string) => {
-    console.log(`QR-SCANNER-DEBUG: ${message}`);
+  // Função para log com suporte a log externo
+  const logDebug = useCallback((message: string) => {
+    console.log(`[QrCodeScanner] ${message}`);
     if (onDebugLog) {
-      onDebugLog(`QR-SCANNER: ${message}`);
+      onDebugLog(`[QrCodeScanner] ${message}`);
     }
-  };
+  }, [onDebugLog]);
+
+  // Função para parar o scanner com segurança
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        logDebug('Tentando parar scanner...');
+        
+        // Primeiro pausamos
+        try {
+          scannerRef.current.pause(true);
+          logDebug('Scanner pausado');
+        } catch (pauseError) {
+          logDebug(`Erro ao pausar scanner: ${pauseError}`);
+        }
+        
+        // Depois paramos completamente
+        await scannerRef.current.stop();
+        logDebug('Scanner parado com sucesso');
+        
+        // Limpar referência
+        scannerRef.current = null;
+        setIsScanning(false);
+      } catch (error) {
+        logDebug(`Erro ao tentar parar scanner: ${error}`);
+        // Reset manual
+        scannerRef.current = null;
+        setIsScanning(false);
+      }
+    }
+  }, [logDebug]);
+  
+  // Callback de sucesso refinado
+  const successCallback = useCallback((decodedText: string) => {
+    logDebug(`QR code lido com sucesso: ${decodedText}`);
+    
+    // Prevenir processamentos duplicados
+    if (hasScanned) {
+      logDebug('QR code já foi processado. Ignorando.');
+      return;
+    }
+    
+    // Marcar como já processado imediatamente
+    setHasScanned(true);
+    
+    // Parar scanner imediatamente e chamar callback
+    stopScanner().then(() => {
+      try {
+        logDebug(`Enviando resultado para componente pai: ${decodedText}`);
+        onScanSuccess(decodedText);
+      } catch (callbackError) {
+        logDebug(`Erro ao chamar callback de sucesso: ${callbackError}`);
+      }
+    }).catch((error) => {
+      logDebug(`Erro ao parar scanner: ${error}`);
+      // Tentar chamar callback mesmo se houver erro ao parar
+      try {
+        onScanSuccess(decodedText);
+      } catch (finalError) {
+        logDebug(`Erro final ao chamar callback: ${finalError}`);
+      }
+    });
+  }, [onScanSuccess, logDebug, stopScanner, hasScanned]);
 
   // Função robusta para iniciar o scanner com fallbacks progressivos
   const startScannerWithFallback = async (cameraIdOrFacingMode: string) => {
@@ -118,80 +186,6 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
         }
         
         // Configurar callbacks
-        const successCallback = (decodedText: string) => {
-          logDebug(`QR code lido com sucesso: ${decodedText}`);
-          
-          // Prevenir múltiplas chamadas do mesmo código QR
-          // Parar o scanner imediatamente para evitar loops
-          if (scannerRef.current) {
-            try {
-              scannerRef.current.pause();
-            } catch (pauseError) {
-              // Ignorar erros ao pausar
-            }
-          
-            scannerRef.current.stop().then(() => {
-              setIsScanning(false);
-              
-              // Adicionar logs detalhados
-              logDebug(`QR Code lido com sucesso: ${decodedText}`);
-              
-              try {
-                // Usar um timeout para garantir que o componente principal tenha tempo de processar
-                setTimeout(() => {
-                  logDebug(`Enviando resultado para componente pai: ${decodedText}`);
-                  
-                  // Chamar o callback de sucesso com o link do QR code
-                  onScanSuccess(decodedText);
-                  
-                  // REDUNDÂNCIA: Se existir um formulário com campo de número de documento, 
-                  // tenta definir diretamente via DOM para garantir
-                  try {
-                    const numeroDocumentoInput = document.querySelector('input[name="numero_documento"]') as HTMLInputElement;
-                    if (numeroDocumentoInput) {
-                      logDebug(`Tentando definir diretamente o valor no campo via DOM: ${decodedText}`);
-                      numeroDocumentoInput.value = decodedText;
-                      
-                      // Disparar eventos para notificar o React sobre a mudança
-                      const event = new Event('input', { bubbles: true });
-                      numeroDocumentoInput.dispatchEvent(event);
-                      
-                      const changeEvent = new Event('change', { bubbles: true });
-                      numeroDocumentoInput.dispatchEvent(changeEvent);
-                    }
-                  } catch (domError) {
-                    logDebug(`Erro ao manipular DOM diretamente: ${domError}`);
-                  }
-                }, 100);
-              } catch (callbackError) {
-                logDebug(`Erro ao chamar callback de sucesso: ${callbackError}`);
-                // Tentar novamente em caso de erro
-                setTimeout(() => onScanSuccess(decodedText), 500);
-              }
-            }).catch(stopError => {
-              logDebug(`Erro ao parar scanner após sucesso: ${stopError}`);
-              // Tentar chamar o callback mesmo se houver erro ao parar
-              try {
-                onScanSuccess(decodedText);
-              } catch (finalError) {
-                // Último recurso - ignorar erros
-              }
-            });
-          } else {
-            // Scanner não disponível, mas tentar chamar callback mesmo assim
-            try {
-              onScanSuccess(decodedText);
-            } catch (noScannerError) {
-              // Ignorar erros finais
-            }
-          }
-        };
-        
-        // Variáveis para controlar erros
-        let errorCount = 0;
-        const maxErrors = 5;
-        let lastErrorTime = 0;
-        
         const errorCallback = (errorMessage: string | any) => {
           // Ignorar mensagens de erro comuns durante o escaneamento
           if (
@@ -207,6 +201,12 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
           
           // Controle de taxa de erros para evitar loops
           const now = Date.now();
+          let lastErrorTime = 0;
+          
+          // Incrementar contador de erros
+          let errorCount = 0;
+          const maxErrors = 5;
+          
           if (now - lastErrorTime > 3000) {
             // Se passou mais de 3 segundos, resetar contador
             errorCount = 0;
@@ -462,7 +462,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
 
   return (
     <div className="qr-scanner-container">
-      <div id={scannerContainerId} className="qr-reader-container"></div>
+      <div ref={containerRef} id={scannerContainerId} className="qr-reader-container"></div>
       
       <div className="mt-4 text-center text-sm">
         <p className={`mb-2 ${isScanning ? 'text-blue-500' : 'text-gray-500'}`}>
@@ -508,4 +508,6 @@ export default function QrCodeScanner({ onScanSuccess, onScanError, onDebugLog }
       </div>
     </div>
   );
-} 
+};
+
+export default QrCodeScanner; 

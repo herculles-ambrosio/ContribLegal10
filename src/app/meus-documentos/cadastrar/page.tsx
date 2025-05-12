@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -23,6 +23,12 @@ const QrCodeScanner = dynamic(() => import('@/components/QrCodeScanner'), {
 
 type TipoDocumento = 'nota_servico' | 'cupom_fiscal' | 'imposto';
 
+// Definir o tipo DocumentoInfo
+interface DocumentoInfo {
+  valor?: string;
+  dataEmissao?: string;
+}
+
 export default function CadastrarDocumento() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -41,7 +47,9 @@ export default function CadastrarDocumento() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMessage, setExtractionMessage] = useState('Extraindo dados do cupom fiscal...');
   const [scannerLogs, setScannerLogs] = useState<string[]>([]); // Para armazenar logs do scanner
+  const [showQrCodeScanner, setShowQrCodeScanner] = useState(false);
   const [isProcessingQrCode, setIsProcessingQrCode] = useState(false);
+  const [documentoInfo, setDocumentoInfo] = useState<DocumentoInfo | null>(null);
 
   // Refs para acessar diretamente os inputs do DOM
   const numeroDocumentoRef = useRef<HTMLInputElement>(null);
@@ -191,293 +199,82 @@ export default function CadastrarDocumento() {
     }
   };
 
-  const handleQrCodeResult = async (result: string) => {
-    // Verificar se já estamos processando um QR code para evitar loops
+  // Função para processar QR code
+  const handleQrCodeScan = useCallback((qrCodeText: string) => {
+    console.log("Função de processamento QR code chamada com:", qrCodeText);
+    
+    // Evitar processamento múltiplo do mesmo QR code
     if (isProcessingQrCode) {
-      console.log('DEBUG > Já existe um processamento de QR code em andamento. Ignorando nova chamada.');
+      console.log("Já existe um processamento em andamento, ignorando nova leitura");
       return;
     }
     
-    // Indicar que começamos a processar
-    setIsProcessingQrCode(true);
-    
-    console.log('DEBUG > ============ INÍCIO DO PROCESSAMENTO DO QR CODE ============');
-    console.log('DEBUG > QR Code detectado (valor original):', result);
-    
-    // Salvar o QR code original para uso em caso de problemas
-    const originalQrCode = result.trim();
-    console.log('DEBUG > QR Code normalizado:', originalQrCode);
-    
-    // Fechar o scanner automaticamente e imediatamente
-    setShowScanner(false);
-    
-    // SOLUÇÃO RADICAL: Definir o valor diretamente via DOM além do React state
-    if (numeroDocumentoRef.current) {
-      console.log('DEBUG > Definindo número_documento via ref DOM:', originalQrCode);
-      numeroDocumentoRef.current.value = originalQrCode;
-    }
-    
-    // Também atualizar via state para manter consistência
-    console.log('DEBUG > Definindo número_documento via setState:', originalQrCode);
-    setFormData(prev => {
-      const newState = { ...prev, numero_documento: originalQrCode };
-      console.log('DEBUG > Estado do formulário atualizado (número documento):', newState);
-      return newState;
-    });
-    
-    // Mostrar modal de carregamento com mensagem mais descritiva
-    setExtractionMessage('Extraindo dados do cupom fiscal - isso pode demorar alguns segundos...');
-    setIsExtracting(true);
-    
     try {
-      // Tentar extrair dados adicionais do cupom fiscal
-      console.log('DEBUG > Iniciando extração de dados do cupom fiscal:', originalQrCode);
-      const fiscalReceiptData = await extractDataFromFiscalReceipt(originalQrCode);
-      console.log('DEBUG > Dados extraídos completos:', JSON.stringify(fiscalReceiptData));
+      setIsProcessingQrCode(true);
       
-      // Esconder modal de carregamento
-      setIsExtracting(false);
+      // Fechar scanner imediatamente
+      setShowQrCodeScanner(false);
       
-      // Atualizações para cada campo
-      handleFieldUpdate('numero_documento', originalQrCode);
+      if (!qrCodeText) {
+        toast.error("QR code inválido, tente novamente");
+        setIsProcessingQrCode(false);
+        return;
+      }
       
-      // Processar valor
-      if (fiscalReceiptData.valor) {
-        try {
-          console.log('DEBUG > Processando valor:', fiscalReceiptData.valor);
-          // Converter para formato brasileiro
-          let valorNumerico = processarValor(fiscalReceiptData.valor);
-          if (!isNaN(valorNumerico)) {
-            const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            });
+      console.log("Processando QR code:", qrCodeText);
+      
+      // Definir valor no formulário - campo de número do documento
+      setFormData(prev => ({ ...prev, numero_documento: qrCodeText }));
+      
+      // Buscar informações do documento apenas se o link for válido
+      if (qrCodeText && qrCodeText.length > 0) {
+        console.log("Buscando informações do documento a partir do QR code");
+        
+        extractDataFromFiscalReceipt(qrCodeText)
+          .then((info) => {
+            console.log("Informações do documento obtidas com sucesso:", info);
             
-            // Atualizar o campo de valor
-            handleFieldUpdate('valor', valorFormatado);
-          } else {
-            // Valor padrão se não conseguir processar
-            handleFieldUpdate('valor', '0,00');
-          }
-        } catch (e) {
-          console.error('DEBUG > Erro ao processar valor:', e);
-          handleFieldUpdate('valor', '0,00');
-        }
+            // Atualizar estado
+            setDocumentoInfo(info);
+            
+            // Preencher campos do formulário com verificação de nullish
+            if (info.valor) {
+              setFormData(prev => ({ ...prev, valor: info.valor.toString() }));
+            }
+            
+            if (info.dataEmissao) {
+              // Garantir que dataEmissao seja string
+              const dataEmissao = info.dataEmissao || '';
+              setFormData(prev => ({ ...prev, data_emissao: dataEmissao }));
+            }
+            
+            toast.success("Informações do documento obtidas com sucesso");
+          })
+          .catch((error) => {
+            console.error("Erro ao obter informações do documento:", error);
+            toast.error(
+              "Não foi possível obter as informações do documento. Preencha manualmente."
+            );
+          })
+          .finally(() => {
+            setIsProcessingQrCode(false);
+          });
       } else {
-        // Valor padrão se não tiver valor
-        handleFieldUpdate('valor', '0,00');
-      }
-      
-      // Processar data de emissão
-      if (fiscalReceiptData.dataEmissao) {
-        try {
-          console.log('DEBUG > Processando data:', fiscalReceiptData.dataEmissao);
-          // Converter para formato YYYY-MM-DD
-          const dataFormatada = processarData(fiscalReceiptData.dataEmissao);
-          if (dataFormatada) {
-            // Atualizar o campo de data
-            handleFieldUpdate('data_emissao', dataFormatada);
-          } else {
-            // Data padrão (hoje) se não conseguir processar
-            const hoje = new Date().toISOString().split('T')[0];
-            handleFieldUpdate('data_emissao', hoje);
-          }
-        } catch (e) {
-          console.error('DEBUG > Erro ao processar data:', e);
-          const hoje = new Date().toISOString().split('T')[0];
-          handleFieldUpdate('data_emissao', hoje);
-        }
-      } else {
-        // Data padrão (hoje) se não tiver data
-        const hoje = new Date().toISOString().split('T')[0];
-        handleFieldUpdate('data_emissao', hoje);
-      }
-      
-      // Feedback ao usuário
-      toast.success('QR Code processado com sucesso! Verifique os dados preenchidos.');
-      
-      console.log('DEBUG > ============ FIM DO PROCESSAMENTO DO QR CODE ============');
-    } catch (extractionError) {
-      // Esconder modal de carregamento em caso de erro
-      setIsExtracting(false);
-      console.error('DEBUG > Erro crítico ao extrair dados:', extractionError);
-      toast.error('Falha ao extrair dados do QR code. Preenchendo campos obrigatórios.');
-      
-      // Mesmo em caso de erro, garantir que o número do documento seja preenchido
-      handleFieldUpdate('numero_documento', originalQrCode);
-      
-      // Preencher com valores padrão em caso de erro
-      handleFieldUpdate('valor', '0,00');
-      const hoje = new Date().toISOString().split('T')[0];
-      handleFieldUpdate('data_emissao', hoje);
-      
-      console.log('DEBUG > ============ FIM COM ERRO DO PROCESSAMENTO DO QR CODE ============');
-    } finally {
-      // Independentemente do resultado, indicar que o processamento terminou
-      setIsProcessingQrCode(false);
-    }
-  };
-  
-  // Função para processar valor em qualquer formato para número
-  const processarValor = (valorStr: string): number => {
-    console.log('DEBUG > Processando valor bruto:', valorStr);
-    
-    // Limpar o valor
-    const valorLimpo = String(valorStr).trim();
-    
-    // Verificar diferentes formatos
-    if (valorLimpo.includes(',')) {
-      // Formato brasileiro: 1.234,56
-      return parseFloat(valorLimpo.replace(/\./g, '').replace(',', '.'));
-    } else if (valorLimpo.includes('.')) {
-      // Formato americano: 1,234.56
-      return parseFloat(valorLimpo);
-    } else if (/^\d+$/.test(valorLimpo)) {
-      // Apenas números, verificar se é centavos ou inteiro
-      const valorInt = parseInt(valorLimpo, 10);
-      return valorInt > 999 ? valorInt / 100 : valorInt;
-    }
-    
-    // Última tentativa - converter diretamente
-    return parseFloat(valorLimpo);
-  };
-  
-  // Função para processar data em qualquer formato para YYYY-MM-DD
-  const processarData = (dataStr: string): string | null => {
-    console.log('DEBUG > Processando data bruta:', dataStr);
-    
-    // Limpar a data
-    const dataLimpa = String(dataStr).trim();
-    
-    // Verificar diferentes formatos
-    // Formato DD/MM/YYYY
-    const formatoBR = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-    const matchBR = dataLimpa.match(formatoBR);
-    if (matchBR) {
-      const [_, dia, mes, ano] = matchBR;
-      return `${ano}-${mes}-${dia}`;
-    }
-    
-    // Formato DD-MM-YYYY
-    const formatoTraco = /^(\d{2})-(\d{2})-(\d{4})$/;
-    const matchTraco = dataLimpa.match(formatoTraco);
-    if (matchTraco) {
-      const [_, dia, mes, ano] = matchTraco;
-      return `${ano}-${mes}-${dia}`;
-    }
-    
-    // Formato YYYY-MM-DD (já no formato correto)
-    const formatoISO = /^(\d{4})-(\d{2})-(\d{2})$/;
-    const matchISO = dataLimpa.match(formatoISO);
-    if (matchISO) {
-      return dataLimpa;
-    }
-    
-    // Não conseguiu reconhecer o formato
-    return null;
-  };
-  
-  // Função para atualizar campos com dupla garantia (state + DOM)
-  const handleFieldUpdate = (fieldName: string, value: string) => {
-    console.log(`DEBUG > Atualizando campo ${fieldName} com valor:`, value);
-    
-    // Atualizar via state
-    setFormData(prev => {
-      const newState = { ...prev, [fieldName]: value };
-      console.log(`DEBUG > Novo estado para ${fieldName}:`, newState);
-      return newState;
-    });
-    
-    // Atualizar via DOM direto
-    try {
-      // Selecionar o elemento apropriado
-      let inputElement: HTMLInputElement | null = null;
-      
-      if (fieldName === 'numero_documento' && numeroDocumentoRef.current) {
-        inputElement = numeroDocumentoRef.current;
-      } else if (fieldName === 'valor' && valorRef.current) {
-        inputElement = valorRef.current;
-      } else if (fieldName === 'data_emissao' && dataEmissaoRef.current) {
-        inputElement = dataEmissaoRef.current;
-      } else {
-        // Buscar pelo nome do campo como fallback
-        inputElement = document.querySelector(`input[name="${fieldName}"]`) as HTMLInputElement;
-      }
-      
-      if (inputElement) {
-        console.log(`DEBUG > Atualizando DOM direto para ${fieldName}:`, value);
-        inputElement.value = value;
-        
-        // Disparar eventos necessários para que o React detecte a mudança
-        const event = new Event('input', { bubbles: true });
-        inputElement.dispatchEvent(event);
-        
-        const changeEvent = new Event('change', { bubbles: true });
-        inputElement.dispatchEvent(changeEvent);
-      } else {
-        console.log(`DEBUG > Elemento DOM não encontrado para ${fieldName}`);
+        setIsProcessingQrCode(false);
       }
     } catch (error) {
-      console.error(`DEBUG > Erro ao atualizar DOM para ${fieldName}:`, error);
+      console.error("Erro ao processar QR code:", error);
+      toast.error("Erro ao processar QR code. Tente novamente.");
+      setIsProcessingQrCode(false);
     }
-  };
-  
-  // Verificação final para garantir que os campos foram preenchidos corretamente
-  const verificarPreenchimentoCampos = (qrCodeOriginal: string) => {
-    console.log('DEBUG > Verificação final dos campos:');
-    
-    // Verificar número do documento
-    if (formData.numero_documento !== qrCodeOriginal) {
-      console.log('DEBUG > ERRO: número_documento não manteve o valor correto!');
-      console.log(`DEBUG > Esperado: ${qrCodeOriginal}`);
-      console.log(`DEBUG > Atual (state): ${formData.numero_documento}`);
-      
-      // Tentar corrigir
-      handleFieldUpdate('numero_documento', qrCodeOriginal);
-    } else {
-      console.log('DEBUG > OK: número_documento tem o valor correto');
-    }
-    
-    // Verificar se valor está preenchido
-    if (!formData.valor) {
-      console.log('DEBUG > ERRO: valor está vazio!');
-      handleFieldUpdate('valor', '0,00');
-    } else {
-      console.log(`DEBUG > OK: valor está preenchido com ${formData.valor}`);
-    }
-    
-    // Verificar se data está preenchida
-    if (!formData.data_emissao) {
-      console.log('DEBUG > ERRO: data_emissao está vazia!');
-      const hoje = new Date().toISOString().split('T')[0];
-      handleFieldUpdate('data_emissao', hoje);
-    } else {
-      console.log(`DEBUG > OK: data_emissao está preenchida com ${formData.data_emissao}`);
-    }
-  };
-  
-  // Handler para logs de depuração do scanner
-  const handleScannerDebugLog = (message: string) => {
-    console.log(message);
-    setScannerLogs(prev => [...prev, message]);
-  };
+  }, [setFormData, isProcessingQrCode]);
 
-  const handleQrCodeError = (error: any) => {
-    console.error('Erro na leitura do QR code:', error);
-    
-    // Mensagens mais específicas baseadas no tipo de erro
-    let errorMessage = 'Erro ao ler o QR code. Tente novamente.';
-    
-    if (typeof error === 'string') {
-      if (error.includes('denied') || error === 'Camera access denied') {
-        errorMessage = 'Acesso à câmera negado. Verifique as permissões.';
-      } else if (error.includes('No cameras') || error === 'No cameras detected') {
-        errorMessage = 'Nenhuma câmera detectada no dispositivo.';
-      }
-    }
-    
-    toast.error(errorMessage);
-  };
+  // Função para lidar com erros no scanner
+  const handleScannerError = useCallback(() => {
+    toast.error("Erro ao tentar ler QR code. Tente novamente.");
+    setShowQrCodeScanner(false);
+    setIsProcessingQrCode(false);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -748,8 +545,8 @@ export default function CadastrarDocumento() {
                     <Button
                       type="button"
                       variant="info"
-                      onClick={handleScanQR}
-                      disabled={showScanner}
+                      onClick={() => setShowQrCodeScanner(true)}
+                      disabled={showQrCodeScanner}
                       className="w-8 h-8 min-w-[2rem] flex items-center justify-center rounded-full"
                       aria-label="Ler QR Code"
                     >
@@ -873,7 +670,7 @@ export default function CadastrarDocumento() {
             </div>
           </form>
           
-          {showScanner && (
+          {showQrCodeScanner && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
               <div className="bg-white p-4 rounded-lg shadow-lg max-w-lg w-full">
                 <div className="flex justify-between items-center mb-4">
@@ -881,7 +678,7 @@ export default function CadastrarDocumento() {
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setShowScanner(false)}
+                    onClick={() => setShowQrCodeScanner(false)}
                     className="text-sm p-2"
                     aria-label="Fechar"
                   >
@@ -898,9 +695,8 @@ export default function CadastrarDocumento() {
                   </ul>
                 </div>
                 <QrCodeScanner 
-                  onScanSuccess={handleQrCodeResult}
-                  onScanError={handleQrCodeError}
-                  onDebugLog={handleScannerDebugLog}
+                  onScanSuccess={handleQrCodeScan}
+                  onScanError={handleScannerError}
                 />
                 <div className="mt-3 text-center">
                   <p className="text-xs text-gray-500">Se estiver com dificuldades para ler o QR Code, tente usar os botões acima para alternativas.</p>
