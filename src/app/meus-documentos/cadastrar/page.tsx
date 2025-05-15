@@ -190,59 +190,6 @@ export default function CadastrarDocumento() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Modificação na função de abertura do scanner para ser mais rápida
-  const handleOpenQrScanner = async () => {
-    // Verificar se o navegador suporta API de câmera
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast.error('Seu navegador não suporta acesso à câmera');
-      return;
-    }
-
-    try {
-      // Reset dos estados antes de abrir o scanner
-      setIsProcessingQrCode(false);
-      
-      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
-      setExtractionMessage('Preparando câmera para leitura do QR code...');
-      setIsExtracting(true);
-      
-      // Otimização: verificar permissão de câmera em background com timeout curto
-      const permissionPromise = navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      }).then(stream => {
-        // Fechar stream imediatamente após verificar permissão
-        stream.getTracks().forEach(track => track.stop());
-        return true;
-      }).catch(() => {
-        return false;
-      });
-      
-      // Definir timeout mais curto para verificação de permissão (1s)
-      const permissionTimeout = new Promise<boolean>(resolve => {
-        setTimeout(() => resolve(false), 1000);
-      });
-      
-      // Tentar obter permissão com timeout
-      const hasPermission = await Promise.race([permissionPromise, permissionTimeout]);
-      
-      // Mostrar scanner independente do resultado da permissão (o próprio componente lidará com erros)
-      // Isso elimina o atraso de verificação de permissão
-      setIsExtracting(false);
-      setCameraPermission(hasPermission);
-      setShowQrCodeScanner(true);
-      
-    } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
-      setIsExtracting(false);
-      setCameraPermission(false);
-      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
-    }
-  };
-
   // Função para processar QR code
   const handleQrCodeScan = useCallback((qrCodeText: string) => {
     console.log("🔍 QR code lido:", qrCodeText);
@@ -259,6 +206,7 @@ export default function CadastrarDocumento() {
     try {
       // Marcar que estamos processando
       setIsProcessingQrCode(true);
+      toast.success("QR Code detectado! Extraindo dados...");
       
       if (!qrCodeText || qrCodeText.trim() === '') {
         toast.error("QR code inválido ou vazio");
@@ -297,8 +245,8 @@ export default function CadastrarDocumento() {
       console.log("🔒 Link original que será preservado:", originalLink);
       
       // Criar um timeout para garantir que o processamento não demore muito
-      // Aumentar o tempo de timeout para 20 segundos para melhorar chance de extração bem-sucedida
-      const timeoutDuration = 20000; // 20 segundos máximo
+      // Reduzir o tempo de timeout para melhorar a experiência do usuário
+      const timeoutDuration = 10000; // 10 segundos máximo
       const extractionTimeoutId = setTimeout(() => {
         console.log("⏱️ TIMEOUT: Extração demorou muito tempo, cancelando");
         setIsExtracting(false);
@@ -624,6 +572,39 @@ export default function CadastrarDocumento() {
     }
   };
 
+  // Modificação na função de abertura do scanner para ser mais rápida
+  const handleOpenQrScanner = async () => {
+    // Verificar se o navegador suporta API de câmera
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error('Seu navegador não suporta acesso à câmera');
+      return;
+    }
+
+    try {
+      // Reset dos estados antes de abrir o scanner
+      setIsProcessingQrCode(false);
+      
+      // Mostrar toast para feedback imediato
+      toast.success("Preparando scanner de QR code...");
+      
+      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
+      setExtractionMessage('Ativando câmera para leitura do QR code...');
+      setIsExtracting(true);
+      
+      // Inicializar scanner mais rapidamente
+      setTimeout(() => {
+        setIsExtracting(false);
+        setShowQrCodeScanner(true);
+      }, 1000);  // Apenas 1s de carregamento para feedback
+      
+    } catch (error) {
+      console.error('Erro ao acessar câmera:', error);
+      setIsExtracting(false);
+      setCameraPermission(false);
+      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
+    }
+  };
+
   useEffect(() => {
     const verificarAutenticacao = async () => {
       try {
@@ -876,8 +857,8 @@ export default function CadastrarDocumento() {
           </form>
           
           {showQrCodeScanner && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80">
-              <div className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-lg max-w-lg w-full mx-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={() => setShowQrCodeScanner(false)}>
+              <div className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-lg max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xl font-semibold text-blue-600 dark:text-blue-400">
                     Escanear QR Code
@@ -908,6 +889,17 @@ export default function CadastrarDocumento() {
                   onScanError={handleScannerError}
                   onDebugLog={(msg) => console.log(msg)}
                 />
+                
+                <div className="mt-3 text-center">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowQrCodeScanner(false)}
+                    className="w-full"
+                  >
+                    Cancelar Leitura
+                  </Button>
+                </div>
               </div>
             </div>
           )}

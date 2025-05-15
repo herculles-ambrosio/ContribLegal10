@@ -19,16 +19,17 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
 }) => {
   const [cameras, setCameras] = useState<{id: string, label: string}[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
-  const [isScanning, setIsScanning] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [message, setMessage] = useState<string>('Inicializando câmera...');
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [scanAttempts, setScanAttempts] = useState(0);
   const [scanStatus, setScanStatus] = useState<'initializing' | 'ready' | 'scanning' | 'error'>('initializing');
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scannerContainerId = "qr-reader";
   const lastScannedCode = useRef<string | null>(null);
+  const noQrCodeFoundCountRef = useRef<number>(0);
+  const scanningIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Função para log com suporte a log externo
   const logDebug = useCallback((message: string) => {
@@ -40,6 +41,11 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
 
   // Função para parar o scanner com segurança
   const stopScanner = useCallback(async () => {
+    if (scanningIntervalRef.current) {
+      clearInterval(scanningIntervalRef.current);
+      scanningIntervalRef.current = null;
+    }
+    
     if (scannerRef.current) {
       try {
         logDebug('Tentando parar scanner...');
@@ -70,74 +76,99 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     }
   }, [logDebug]);
   
-  // Callback de sucesso refinado
-  const successCallback = useCallback((decodedText: string) => {
-    logDebug(`QR code lido com sucesso: ${decodedText}`);
+  // Callback de sucesso simplificado e robusto
+  const successCallback = useCallback((decodedText: string, decodedResult: any) => {
+    logDebug(`QR code detectado: ${decodedText}`);
     
-    // Verificação rápida para evitar processamento de QR codes vazios
+    // Verificações básicas
     if (!decodedText || decodedText.trim() === '') {
       logDebug('QR code vazio, ignorando');
       return;
     }
     
-    // Prevenir processamentos duplicados e garantir que o código seja válido
+    // Se já scaneou, ignorar
     if (hasScanned) {
-      logDebug('QR code já foi processado. Ignorando.');
+      logDebug('Já existe um QR code processado, ignorando');
       return;
     }
     
-    // Verifica se o código é o mesmo que já processamos antes
-    if (lastScannedCode.current === decodedText) {
-      logDebug('Mesmo QR code lido novamente. Ignorando.');
-      return;
-    }
-    
-    // Validar se o QR code tem um formato válido
-    // Deve ser uma URL ou ter pelo menos 10 caracteres para potencialmente ser um cupom fiscal
-    if (decodedText.length < 10) {
-      logDebug(`QR code inválido ou muito curto: ${decodedText}`);
-      setMessage('QR Code inválido. Tente novamente.');
-      return;
-    }
-    
-    // Registrar o código escaneado para evitar duplicação
-    lastScannedCode.current = decodedText;
-    
-    // Marcar como já processado imediatamente
+    // Marcar como processado para impedir duplicação
     setHasScanned(true);
     setMessage('QR Code detectado! Processando...');
     
-    // Tentar pausar scanner primeiro para economizar recursos
-    try {
-      if (scannerRef.current) {
-        scannerRef.current.pause();
-      }
-    } catch (e) {
-      logDebug(`Erro ao pausar scanner: ${e}`);
+    // Parar qualquer monitoramento de status
+    if (scanningIntervalRef.current) {
+      clearInterval(scanningIntervalRef.current);
+      scanningIntervalRef.current = null;
     }
     
-    // Chamar callback e parar scanner
+    // Chamar callback imediatamente com o código detectado
     try {
-      // Chamar callback imediatamente para agilizar o processamento
-      logDebug(`Enviando resultado para componente pai: ${decodedText}`);
       onScanSuccess(decodedText);
       
-      // Parar scanner em segundo plano
-      stopScanner().catch((error) => {
-        logDebug(`Erro ao parar scanner após sucesso: ${error}`);
-      });
-    } catch (callbackError) {
-      logDebug(`Erro ao chamar callback de sucesso: ${callbackError}`);
-      setHasScanned(false); // Resetar em caso de erro para permitir nova tentativa
+      // Parar scanner após sucesso
+      if (scannerRef.current) {
+        try {
+          scannerRef.current.pause();
+          logDebug('Scanner pausado após sucesso');
+          
+          // Parar completamente em segundo plano
+          stopScanner().catch(e => logDebug(`Erro ao parar scanner após sucesso: ${e}`));
+        } catch (e) {
+          logDebug(`Erro ao pausar scanner após sucesso: ${e}`);
+        }
+      }
+    } catch (error) {
+      logDebug(`Erro ao processar QR code: ${error}`);
+      setHasScanned(false); // Resetar para permitir nova tentativa
+      setMessage('Erro ao processar QR code. Tente novamente.');
       
-      // Tentar parar scanner mesmo assim
-      stopScanner().catch((error) => {
-        logDebug(`Erro ao parar scanner após erro de callback: ${error}`);
-      });
+      if (onScanError) {
+        onScanError(error);
+      }
     }
-  }, [onScanSuccess, logDebug, stopScanner, hasScanned]);
+  }, [hasScanned, logDebug, onScanError, onScanSuccess, stopScanner]);
+  
+  // Função para monitorar o status do scanner
+  const startScanningMonitor = useCallback(() => {
+    // Limpar qualquer intervalo existente
+    if (scanningIntervalRef.current) {
+      clearInterval(scanningIntervalRef.current);
+    }
+    
+    // Definir contador inicial
+    noQrCodeFoundCountRef.current = 0;
+    
+    // Iniciar novo monitoramento a cada 1s
+    scanningIntervalRef.current = setInterval(() => {
+      if (!scannerRef.current || hasScanned) {
+        clearInterval(scanningIntervalRef.current!);
+        return;
+      }
+      
+      // Verificar status atual - a cada 3s sem detecção
+      noQrCodeFoundCountRef.current += 1;
+      
+      if (noQrCodeFoundCountRef.current >= 3) {
+        // Após 3s sem detecção
+        setMessage('Posicione o QR code para leitura - tente aproximar mais a câmera');
+      }
+      
+      if (noQrCodeFoundCountRef.current >= 10) {
+        // Após 10s sem detecção
+        setMessage('Está difícil ler o QR code. Certifique-se de que há luz suficiente.');
+      }
+      
+      if (noQrCodeFoundCountRef.current >= 20) {
+        // Após 20s sem detecção
+        toast.error('Não foi possível ler o QR code. Tente novamente.');
+        clearInterval(scanningIntervalRef.current!);
+        // Não parar scanner automaticamente, deixar usuário decidir
+      }
+    }, 1000);
+  }, [hasScanned]);
 
-  // Função para iniciar o scanner com uma configuração específica
+  // Iniciar o scanner com configuração ultra simplificada para máxima compatibilidade
   const startScanner = useCallback(async (cameraId: string) => {
     if (!containerRef.current) {
       logDebug('Container não encontrado');
@@ -146,8 +177,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       return false;
     }
     
+    // Limpar scanner existente
     if (scannerRef.current) {
-      logDebug('Parando scanner existente antes de reiniciar');
       await stopScanner();
     }
     
@@ -155,79 +186,60 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       logDebug(`Iniciando scanner com câmera: ${cameraId}`);
       setMessage('Inicializando câmera...');
       
-      // Limpar status anterior
+      // Reset dos estados
       setHasScanned(false);
       lastScannedCode.current = null;
+      noQrCodeFoundCountRef.current = 0;
       
-      // Criar uma nova instância do scanner
+      // Criar nova instância do scanner
       const scanner = new Html5Qrcode(scannerContainerId);
       scannerRef.current = scanner;
       
-      // Configuração simplificada para melhor desempenho
-      const config = { 
-        fps: 10, // Reduzir para melhorar desempenho
-        qrbox: {
-          width: 300, 
-          height: 300
-        }, // Tamanho fixo mais eficiente
+      // Configuração minimalista para máxima compatibilidade
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
         aspectRatio: 1.0,
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        disableFlip: false, // Permitir flip para melhorar detecção
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        }
+        disableFlip: false
       };
       
+      // Determinar qual câmera usar
       const cameraConfig = cameraId === 'environment' 
         ? { facingMode: 'environment' } 
         : cameraId;
       
+      // Iniciar scanner com feedback de erro simplificado
       await scanner.start(
-        cameraConfig, 
-        config, 
-        successCallback, 
+        cameraConfig,
+        config,
+        successCallback,
         (errorMessage) => {
-          // Ignorar erros comuns durante o escaneamento
-          if (typeof errorMessage === 'string' && (
-            errorMessage.includes('No QR code found') ||
-            errorMessage.includes('Scanning paused') ||
-            errorMessage.includes('No MultiFormat Readers')
-          )) {
+          // Ignorar erros comuns durante escaneamento
+          if (typeof errorMessage === 'string' && 
+              (errorMessage.includes('No QR code found') || 
+               errorMessage.includes('Scanning paused'))) {
             return;
           }
           
-          // Log de erros não críticos
-          logDebug(`Erro não crítico durante escaneamento: ${errorMessage}`);
+          logDebug(`Erro durante escaneamento: ${errorMessage}`);
         }
       );
       
+      // Atualizar estados
       setIsScanning(true);
       setScanStatus('scanning');
       setMessage('Aponte a câmera para o QR Code');
-      logDebug('Scanner iniciado com sucesso');
       
-      // Verificar suporte à lanterna
-      try {
-        // Verificar se o scanner tem suporte à lanterna
-        // @ts-ignore - TypeScript não reconhece estas APIs específicas
-        if (typeof scanner.getRunningTrackCapabilities === 'function') {
-          // @ts-ignore
-          const capabilities = await scanner.getRunningTrackCapabilities();
-          if (capabilities && 'torch' in capabilities) {
-            setTorchEnabled(false); // Reset estado da lanterna
-            logDebug('Dispositivo tem suporte à lanterna');
-          } else {
-            logDebug('Dispositivo não tem suporte à lanterna');
-          }
-        }
-      } catch (e) {
-        logDebug(`Erro ao verificar suporte à lanterna: ${e}`);
-      }
+      // Iniciar monitoramento de estado
+      startScanningMonitor();
+      
+      logDebug('Scanner iniciado com sucesso');
+      toast.success('Câmera pronta para leitura!');
       
       return true;
     } catch (error) {
       logDebug(`Erro ao iniciar scanner: ${error}`);
-      setMessage('Erro ao acessar câmera. Tente reiniciar ou permitir acesso à câmera nas configurações do navegador.');
+      setMessage(`Erro ao acessar câmera: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       setScanStatus('error');
       
       if (onScanError) {
@@ -236,13 +248,12 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       
       return false;
     }
-  }, [logDebug, onScanError, stopScanner, successCallback]);
+  }, [logDebug, onScanError, startScanningMonitor, stopScanner, successCallback]);
 
   // Reiniciar o scanner
   const handleRestartScanner = useCallback(async () => {
-    logDebug('Solicitando reinício do scanner');
+    logDebug('Reiniciando scanner');
     setMessage('Reiniciando scanner...');
-    setScanAttempts(prev => prev + 1);
     
     // Resetar estado
     setHasScanned(false);
@@ -267,7 +278,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     }
   }, [cameras, currentCamera, logDebug, startScanner, stopScanner]);
 
-  // Alternar lanterna
+  // Alternar lanterna - implementação simplificada
   const handleToggleTorch = useCallback(async () => {
     if (!scannerRef.current) {
       toast.error('Scanner não está ativo');
@@ -275,75 +286,36 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     }
     
     try {
-      // Usar uma abordagem compatível com mais dispositivos
+      // Usar método direto com try-catch
       if (torchEnabled) {
-        try {
-          // @ts-ignore - Ignorar erro de tipo para usar API da lanterna
-          await scannerRef.current.applyVideoConstraints({
-            advanced: [{
-              // @ts-ignore
-              torch: false
-            }]
-          });
-          setTorchEnabled(false);
-          toast.success('Lanterna desativada');
-        } catch (e) {
-          // Fallback para método alternativo
-          try {
-            // @ts-ignore
-            await scannerRef.current.disableTorch();
-            setTorchEnabled(false);
-            toast.success('Lanterna desativada');
-          } catch (innerError) {
-            throw new Error('Dispositivo não suporta controle de lanterna');
-          }
-        }
+        // @ts-ignore
+        await scannerRef.current.disableTorch();
+        setTorchEnabled(false);
+        toast.success('Lanterna desativada');
       } else {
-        try {
-          // @ts-ignore - Ignorar erro de tipo para usar API da lanterna
-          await scannerRef.current.applyVideoConstraints({
-            advanced: [{
-              // @ts-ignore
-              torch: true
-            }]
-          });
-          setTorchEnabled(true);
-          toast.success('Lanterna ativada');
-        } catch (e) {
-          // Fallback para método alternativo
-          try {
-            // @ts-ignore
-            await scannerRef.current.enableTorch();
-            setTorchEnabled(true);
-            toast.success('Lanterna ativada');
-          } catch (innerError) {
-            throw new Error('Dispositivo não suporta controle de lanterna');
-          }
-        }
+        // @ts-ignore
+        await scannerRef.current.enableTorch();
+        setTorchEnabled(true);
+        toast.success('Lanterna ativada');
       }
     } catch (error) {
-      logDebug(`Erro ao alternar lanterna: ${error}`);
-      toast.error('Lanterna não disponível neste dispositivo ou navegador');
+      console.error('Erro ao alternar lanterna:', error);
+      toast.error('Lanterna não disponível neste dispositivo');
     }
-  }, [torchEnabled, logDebug]);
+  }, [torchEnabled]);
 
   // Alternar câmera
   const handleSwitchCamera = useCallback(async () => {
+    if (cameras.length <= 1) {
+      toast.error('Não há outra câmera disponível');
+      return;
+    }
+    
     try {
-      // Se estamos usando a primeira câmera, alternar para a segunda
-      // Se estamos usando a segunda, alternar para a primeira
       const newCameraIndex = cameras.findIndex(cam => cam.id === currentCamera) === 0 ? 1 : 0;
-      
-      // Verificar se a câmera existe
-      if (cameras.length <= newCameraIndex) {
-        toast.error('Não há outra câmera disponível');
-        return;
-      }
-      
       const newCameraId = cameras[newCameraIndex].id;
-      logDebug(`Alternando para câmera: ${newCameraId}`);
       
-      // Parar scanner atual
+      logDebug(`Alternando para câmera: ${newCameraId}`);
       await stopScanner();
       
       // Resetar estado
@@ -368,18 +340,24 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         setScanStatus('initializing');
         logDebug('Iniciando detecção de câmeras...');
         
-        // Verifica se tem suporte à API MediaDevices
+        // Verificar suporte
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-          logDebug('API MediaDevices não suportada');
           setMessage('Seu navegador não suporta acesso à câmera');
           setScanStatus('error');
           return;
         }
         
-        // Solicitar permissão de acesso à câmera
+        // Solicitar permissão de câmera - tentativa simplificada
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          // Parar stream após obter permissão
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            } 
+          });
+          
+          // Liberar stream após obter permissão
           stream.getTracks().forEach(track => track.stop());
         } catch (error) {
           logDebug(`Erro ao obter permissão de câmera: ${error}`);
@@ -392,7 +370,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
           return;
         }
         
-        // Listar dispositivos disponíveis
+        // Listar dispositivos
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
         
@@ -403,7 +381,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
           return;
         }
         
-        // Mapear câmeras disponíveis
+        // Mapear câmeras
         const cameraOptions = videoDevices.map(device => ({
           id: device.deviceId,
           label: device.label || `Câmera ${device.deviceId.slice(0, 5)}`
@@ -412,11 +390,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         setCameras(cameraOptions);
         logDebug(`${cameraOptions.length} câmeras encontradas`);
         
-        // Usar câmera traseira por padrão se houver mais de uma câmera
-        // Geralmente, câmeras traseiras têm 'back' ou 'environment' no label
+        // Preferir câmera traseira
         let defaultCamera = cameraOptions[0].id;
-        
-        // Preferir câmera traseira em dispositivos móveis
         const backCamera = cameraOptions.find(camera => 
           camera.label.toLowerCase().includes('back') || 
           camera.label.toLowerCase().includes('traseira') ||
@@ -431,8 +406,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         setCurrentCamera(defaultCamera);
         setScanStatus('ready');
         
-        // Iniciar scanner automaticamente
-        startScanner(defaultCamera);
+        // Iniciar scanner
+        await startScanner(defaultCamera);
         
       } catch (error) {
         logDebug(`Erro ao detectar câmeras: ${error}`);
@@ -449,6 +424,10 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     
     // Limpar ao desmontar
     return () => {
+      if (scanningIntervalRef.current) {
+        clearInterval(scanningIntervalRef.current);
+      }
+      
       if (scannerRef.current) {
         logDebug('Limpando scanner ao desmontar componente');
         stopScanner().catch(error => logDebug(`Erro ao limpar scanner: ${error}`));
@@ -468,6 +447,19 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         className="w-full h-80 relative bg-gray-100 rounded-md overflow-hidden mb-4"
       >
         <div id={scannerContainerId} className="w-full h-full" />
+        
+        {/* Indicador visual para mostrar que o scanner está ativo */}
+        {isScanning && scanStatus === 'scanning' && !hasScanned && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-blue-500 rounded-lg animate-pulse"></div>
+            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 border-2 border-transparent rounded-lg">
+              <div className="absolute top-0 left-0 w-16 h-2 bg-blue-500 rounded-full"></div>
+              <div className="absolute top-0 right-0 w-2 h-16 bg-blue-500 rounded-full"></div>
+              <div className="absolute bottom-0 left-0 w-2 h-16 bg-blue-500 rounded-full"></div>
+              <div className="absolute bottom-0 right-0 w-16 h-2 bg-blue-500 rounded-full"></div>
+            </div>
+          </div>
+        )}
         
         {scanStatus === 'error' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white p-4 text-center">
@@ -514,7 +506,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       </div>
       
       <div className="text-xs text-gray-400 text-center mt-4">
-        Posicione o QR code do cupom fiscal dentro da área de leitura
+        <p>Posicione o QR code do cupom fiscal dentro da área de leitura.</p>
+        <p className="mt-1">Certifique-se de que há boa iluminação e que o QR code está visível por completo.</p>
       </div>
     </div>
   );
