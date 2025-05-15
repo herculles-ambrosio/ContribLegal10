@@ -34,6 +34,7 @@ interface FiscalReceiptRequest {
   qrCodeLink: string;
   preExtractedValor?: string;
   preExtractedData?: string;
+  originalLinkPreserve?: string; // Campo para garantir a preservação do link original
 }
 
 export async function POST(request: NextRequest) {
@@ -47,10 +48,12 @@ export async function POST(request: NextRequest) {
     // Obter dados da requisição
     const data: FiscalReceiptRequest = await request.json();
     const qrCodeUrl = data.qrCodeLink;
-    const preExtractedValor = data.preExtractedValor; // Novo: valor pré-extraído
-    const preExtractedData = data.preExtractedData; // Novo: data pré-extraída
+    const preExtractedValor = data.preExtractedValor; // Valor pré-extraído
+    const preExtractedData = data.preExtractedData; // Data pré-extraída
+    const originalLink = data.originalLinkPreserve; // Link original preservado
     
     console.log('API - Link recebido para extração:', qrCodeUrl);
+    console.log('API - Link original preservado:', originalLink);
     
     if (!qrCodeUrl) {
       return NextResponse.json(
@@ -60,7 +63,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Inicializar variáveis para os dados a serem extraídos
-    let numeroDocumento: string | undefined = undefined;
+    // IMPORTANTE: Usar o link original como número do documento se disponível
+    let numeroDocumento: string | undefined = originalLink || qrCodeUrl;
     let valor: string | undefined = preExtractedValor; // Usar valor pré-extraído se existir
     let dataEmissao: string | undefined = preExtractedData; // Usar data pré-extraída se existir
     
@@ -70,11 +74,16 @@ export async function POST(request: NextRequest) {
     const normalizedLink = qrCodeUrl.trim();
     console.log('API-DEBUG > Link normalizado recebido:', normalizedLink);
     
-    // IMPORTANTE: Inicialmente, o numeroDocumento DEVE ser o próprio link
+    // IMPORTANTE: Inicialmente, o numeroDocumento DEVE ser o próprio link original
     // Isso garante que, mesmo se as extrações avançadas não funcionarem,
     // o link completo será retornado como numeroDocumento
-    numeroDocumento = normalizedLink;
-    console.log('API-DEBUG > Número do documento inicial (link completo):', numeroDocumento);
+    if (originalLink) {
+      numeroDocumento = originalLink;
+      console.log('API-DEBUG > Usando link original preservado como número do documento:', numeroDocumento);
+    } else {
+      numeroDocumento = normalizedLink;
+      console.log('API-DEBUG > Usando link normalizado como número do documento:', numeroDocumento);
+    }
     
     // Inicializar o controller para timeout da requisição
     const controller = new AbortController();
@@ -239,9 +248,14 @@ export async function POST(request: NextRequest) {
         console.error(`API - Erro ao acessar página: ${response.status} ${response.statusText}`);
         
         // Se já tiver extraído algum dado do próprio link, retornar esses dados
+        // SEMPRE com o numeroDocumento sendo o link original
         if (numeroDocumento || valor || dataEmissao) {
           console.log('API - Usando dados extraídos do link, pois a página não pôde ser acessada');
-          return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+          return NextResponse.json({ 
+            numeroDocumento: originalLink || numeroDocumento, 
+            valor, 
+            dataEmissao 
+          }, {
             status: 200,
             headers: responseHeaders,
           });
@@ -249,7 +263,10 @@ export async function POST(request: NextRequest) {
         
         // Caso contrário, retornar mensagem sem dados
         return NextResponse.json(
-          { message: 'QR Code processado, sem dados extraídos' },
+          { 
+            message: 'QR Code processado, sem dados extraídos',
+            numeroDocumento: originalLink || numeroDocumento
+          },
           { status: 200, headers: responseHeaders }
         );
       }
@@ -578,7 +595,7 @@ export async function POST(request: NextRequest) {
       
       // GARANTIA: Ao final de toda extração, garantir que numeroDocumento é o link original
       // Isso é crítico para o funcionamento correto das regras de negócio
-      numeroDocumento = normalizedLink;
+      numeroDocumento = originalLink || numeroDocumento;
       console.log('API-DEBUG > Garantindo número do documento como link completo:', numeroDocumento);
       
       // Garantir que o valor, se extraído mas inválido, seja tratado
@@ -627,14 +644,21 @@ export async function POST(request: NextRequest) {
         // Se já tiver extraído algum dado do próprio link, retornar esses dados
         if (numeroDocumento || valor || dataEmissao) {
           console.log('API - Usando dados extraídos do link, pois houve timeout na requisição');
-          return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+          return NextResponse.json({ 
+            numeroDocumento: originalLink || numeroDocumento, 
+            valor, 
+            dataEmissao 
+          }, {
             status: 200,
             headers: responseHeaders,
           });
         }
         
         return NextResponse.json(
-          { message: 'QR Code processado, sem dados extraídos' },
+          { 
+            message: 'QR Code processado, sem dados extraídos',
+            numeroDocumento: originalLink || numeroDocumento
+          },
           { status: 200, headers: responseHeaders }
         );
       }
@@ -644,7 +668,11 @@ export async function POST(request: NextRequest) {
       // Se já tiver extraído algum dado do próprio link, retornar esses dados
       if (numeroDocumento || valor || dataEmissao) {
         console.log('API - Usando dados extraídos do link, pois houve erro ao processar página');
-        return NextResponse.json({ numeroDocumento, valor, dataEmissao }, {
+        return NextResponse.json({ 
+          numeroDocumento: originalLink || numeroDocumento, 
+          valor, 
+          dataEmissao 
+        }, {
           status: 200,
           headers: responseHeaders,
         });
@@ -652,7 +680,10 @@ export async function POST(request: NextRequest) {
       
       // Retornar um objeto para evitar erro, mesmo que sem dados
       return NextResponse.json(
-        { message: 'QR Code processado, sem dados extraídos' },
+        { 
+          message: 'QR Code processado, sem dados extraídos',
+          numeroDocumento: originalLink || numeroDocumento
+        },
         { status: 200, headers: responseHeaders }
       );
     }

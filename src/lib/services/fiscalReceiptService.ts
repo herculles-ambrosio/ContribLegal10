@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 
 // Constantes para depuração
-const DEBUG = false;  // Desabilitar logs detalhados para melhorar performance
+const DEBUG = true;  // Habilitar logs para diagnóstico
 const REDUCED_TIMEOUT = false;  // Se true, usa timeout reduzido para testes rápidos
 
 export interface FiscalReceiptData {
@@ -35,10 +35,10 @@ export async function extractDataFromFiscalReceipt(
 
     if (DEBUG) console.log('🔍 URL da API:', apiUrl);
 
-    // Fazer requisição para nossa API com timeout reduzido para 15 segundos
-    // Timeout reduzido para melhorar a experiência do usuário
+    // Fazer requisição para nossa API com timeout aumentado para 20 segundos
+    // para melhorar a chance de sucesso na extração
     const controller = new AbortController();
-    const timeoutDuration = REDUCED_TIMEOUT ? 8000 : 15000; // 8 ou 15 segundos
+    const timeoutDuration = REDUCED_TIMEOUT ? 8000 : 20000; // 8 ou 20 segundos
     const timeoutId = setTimeout(() => {
       if (DEBUG) console.log('⚠️ TIMEOUT ACIONADO! Abortando requisição após', timeoutDuration/1000, 'segundos');
       controller.abort();
@@ -59,7 +59,7 @@ export async function extractDataFromFiscalReceipt(
     // Criar um objeto para armazenar os resultados parciais 
     // que serão atualizados pelas extrações paralelas
     const resultadoParcial: FiscalReceiptData = {
-      numeroDocumento: linkCompleto,
+      numeroDocumento: linkCompleto, // Garantir que o link original está aqui
       valor: undefined,
       dataEmissao: undefined
     };
@@ -70,14 +70,14 @@ export async function extractDataFromFiscalReceipt(
       // Executar as extrações em paralelo para economizar tempo
       const [extraidoDaUrl, extraidoDaApi] = await Promise.allSettled([
         // 1. Extração direta da URL (mais rápido, mas menos preciso)
-        extrairDadosDiretamente(urlProcessada),
+        extrairDadosDiretamente(urlProcessada, DEBUG),
         
         // 2. Chamada à API (mais preciso, mas mais lento)
         (async () => {
           try {
-            // Usar um timeout menor para a chamada da API
+            // Usar um timeout maior para a chamada da API
             const apiController = new AbortController();
-            const apiTimeoutId = setTimeout(() => apiController.abort(), 12000); // 12 segundos máximo
+            const apiTimeoutId = setTimeout(() => apiController.abort(), 18000); // 18 segundos máximo
             
             const response = await fetch(apiUrl, {
               method: 'POST',
@@ -87,7 +87,8 @@ export async function extractDataFromFiscalReceipt(
               body: JSON.stringify({ 
                 qrCodeLink: urlProcessada,
                 preExtractedValor: resultadoParcial.valor, 
-                preExtractedData: resultadoParcial.dataEmissao
+                preExtractedData: resultadoParcial.dataEmissao,
+                originalLinkPreserve: linkCompleto // ADICIONAR LINK ORIGINAL PARA PRESERVAR NA API
               }),
               signal: apiController.signal,
             });
@@ -116,6 +117,9 @@ export async function extractDataFromFiscalReceipt(
         // Atualizar valores do resultado parcial se tiverem sido obtidos
         if (extraidoDaUrl.value.valor) resultadoParcial.valor = extraidoDaUrl.value.valor;
         if (extraidoDaUrl.value.dataEmissao) resultadoParcial.dataEmissao = extraidoDaUrl.value.dataEmissao;
+        
+        // Log para verificar os dados extraídos diretamente
+        if (DEBUG) console.log('✅ [EXTRACAO DIRETA] Dados extraídos da URL:', extraidoDaUrl.value);
       }
       
       // Processar resultados da API (têm prioridade sobre a extração direta)
@@ -130,6 +134,9 @@ export async function extractDataFromFiscalReceipt(
         if (dadosApi.dataEmissao) {
           resultadoParcial.dataEmissao = formatarData(dadosApi.dataEmissao);
         }
+        
+        // Log para verificar os dados extraídos pela API
+        if (DEBUG) console.log('✅ [EXTRACAO API] Dados extraídos pela API:', dadosApi);
       }
       
       // Se ainda não temos valor ou data, usar valores padrão
@@ -147,9 +154,7 @@ export async function extractDataFromFiscalReceipt(
       }
       
       // VERIFICAÇÃO FINAL: Garantir que o número do documento é o link original
-      if (resultadoParcial.numeroDocumento !== linkCompleto) {
-        resultadoParcial.numeroDocumento = linkCompleto;
-      }
+      resultadoParcial.numeroDocumento = linkCompleto;
       
       if (DEBUG) console.log('✅ [FIM EXTRACAO] Dados finais retornados:', resultadoParcial);
       return resultadoParcial;
@@ -163,7 +168,7 @@ export async function extractDataFromFiscalReceipt(
         // Retornar os dados parciais já extraídos
         return {
           error: 'A requisição excedeu o tempo limite.',
-          numeroDocumento: linkCompleto,
+          numeroDocumento: linkCompleto, // GARANTIR QUE É O LINK COMPLETO
           valor: resultadoParcial.valor || '0,00',
           dataEmissao: resultadoParcial.dataEmissao || obterDataAtual()
         };
@@ -172,7 +177,7 @@ export async function extractDataFromFiscalReceipt(
       console.error('❌ Erro durante a extração de dados:', error);
       return {
         error: error instanceof Error ? error.message : 'Erro desconhecido',
-        numeroDocumento: linkCompleto,
+        numeroDocumento: linkCompleto, // GARANTIR QUE É O LINK COMPLETO
         valor: resultadoParcial.valor || '0,00',
         dataEmissao: resultadoParcial.dataEmissao || obterDataAtual()
       };
@@ -181,7 +186,7 @@ export async function extractDataFromFiscalReceipt(
     console.error('❌ Erro geral na extração:', generalError);
     return {
       error: generalError instanceof Error ? generalError.message : 'Erro desconhecido',
-      numeroDocumento: qrCodeLink,
+      numeroDocumento: qrCodeLink, // ORIGINAL LINK
       valor: '0,00',
       dataEmissao: obterDataAtual()
     };
@@ -192,7 +197,7 @@ export async function extractDataFromFiscalReceipt(
  * Função otimizada para extrair dados diretamente da URL do QR code
  * sem depender da API para melhorar a velocidade
  */
-async function extrairDadosDiretamente(url: string): Promise<FiscalReceiptData> {
+async function extrairDadosDiretamente(url: string, debug = false): Promise<FiscalReceiptData> {
   const resultado: FiscalReceiptData = {
     numeroDocumento: url,
   };
@@ -203,45 +208,58 @@ async function extrairDadosDiretamente(url: string): Promise<FiscalReceiptData> 
       const urlObj = new URL(url);
       const params = new URLSearchParams(urlObj.search);
       
-      // Tentar extrair valor
+      // Tentar extrair valor com padrões expandidos
       const possiveisValores = [
         params.get('vNF'),
         params.get('valor'),
         params.get('valorTotal'),
         params.get('total'),
-        params.get('vPag')
+        params.get('vPag'),
+        params.get('VNF'),
+        params.get('VALOR'),
+        params.get('price'),
+        params.get('amount'),
+        params.get('amt')
       ];
       
       for (const val of possiveisValores) {
         if (val && !isNaN(parseFloat(val.replace(',', '.')))) {
           resultado.valor = formatarValor(val);
+          if (debug) console.log(`🔍 [URL] Valor extraído do parâmetro: ${resultado.valor}`);
           break;
         }
       }
       
-      // Tentar extrair data
+      // Tentar extrair data com padrões expandidos
       const possiveisDatas = [
         params.get('dhEmi'),
         params.get('data'),
         params.get('dataEmissao'),
-        params.get('dEmi')
+        params.get('dEmi'),
+        params.get('DATA'),
+        params.get('date'),
+        params.get('dt'),
+        params.get('emissao'),
+        params.get('EMISSAO')
       ];
       
       for (const data of possiveisDatas) {
         if (data && /\d{2}[\/\.-]\d{2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{2}[\/\.-]\d{2}/.test(data)) {
           resultado.dataEmissao = formatarData(data);
+          if (debug) console.log(`🔍 [URL] Data extraída do parâmetro: ${resultado.dataEmissao}`);
           break;
         }
       }
     } catch (linkError) {
       // Ignora erros na análise da URL
+      if (debug) console.log('⚠️ [URL] Erro ao analisar parâmetros da URL:', linkError);
     }
     
-    // 2. Tentar acessar a página rapidamente para extração direta com timeout reduzido (3s)
+    // 2. Tentar acessar a página rapidamente para extração direta com timeout aumentado (5s)
     if (!resultado.valor || !resultado.dataEmissao) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos apenas
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos
         
         const response = await fetch(url, {
           method: 'GET',
@@ -256,31 +274,76 @@ async function extrairDadosDiretamente(url: string): Promise<FiscalReceiptData> 
         if (response.ok) {
           const text = await response.text();
           
-          // Extrair valor usando regex otimizado
+          // Extrair valor usando regex expandidos
           if (!resultado.valor) {
-            const valorRegex = /(?:Valor Total|Total|Valor)(?:\s*R\$)?[\s:]*([0-9]+[,.][0-9]{2})/i;
-            const valorMatches = text.match(valorRegex);
-            if (valorMatches && valorMatches[1]) {
-              resultado.valor = formatarValor(valorMatches[1]);
+            const valorPatterns = [
+              /(?:Valor Total|Total|Valor)(?:\s*R\$)?[\s:]*([0-9]+[,.][0-9]{2})/i,
+              /(?:R\$\s*)([0-9]+[,.][0-9]{2})/i,
+              /(?:VALOR\s*TOTAL\s*R\$\s*)([0-9]+[,.][0-9]{2})/i,
+              /(?:TOTAL\s*R\$\s*)([0-9]+[,.][0-9]{2})/i,
+              /(?:TOTAL:?\s*)([0-9]+[,.][0-9]{2})/i,
+              /(?:VALOR:?\s*)([0-9]+[,.][0-9]{2})/i
+            ];
+            
+            for (const pattern of valorPatterns) {
+              const valorMatches = text.match(pattern);
+              if (valorMatches && valorMatches[1]) {
+                resultado.valor = formatarValor(valorMatches[1]);
+                if (debug) console.log(`🔍 [HTML] Valor extraído com regex: ${resultado.valor}`);
+                break;
+              }
             }
           }
           
-          // Extrair data usando regex otimizado
+          // Extrair data usando regex expandidos
           if (!resultado.dataEmissao) {
-            const dataRegex = /(?:Data(?:\s*de)?\s*Emissão|Emissão)(?:\s*:)?\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i;
-            const dataMatches = text.match(dataRegex);
-            if (dataMatches && dataMatches[1]) {
-              resultado.dataEmissao = dataMatches[1];
+            const dataPatterns = [
+              /(?:Data(?:\s*de)?\s*Emissão|Emissão)(?:\s*:)?\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+              /(?:DATA\s*EMISSÃO:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+              /(?:EMISSÃO:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+              /(?:DATA:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+              /(?:EMI:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
+              /([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i
+            ];
+            
+            for (const pattern of dataPatterns) {
+              const dataMatches = text.match(pattern);
+              if (dataMatches && dataMatches[1]) {
+                resultado.dataEmissao = dataMatches[1];
+                if (debug) console.log(`🔍 [HTML] Data extraída com regex: ${resultado.dataEmissao}`);
+                break;
+              }
+            }
+          }
+          
+          // Se ainda não tem data, buscar por outros formatos
+          if (!resultado.dataEmissao) {
+            const dataPatternsFallback = [
+              /(?:Data(?:\s*de)?\s*Emissão|Emissão)(?:\s*:)?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+              /(?:DATA\s*EMISSÃO:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+              /(?:EMISSÃO:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
+              /(?:DATA:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i
+            ];
+            
+            for (const pattern of dataPatternsFallback) {
+              const dataMatches = text.match(pattern);
+              if (dataMatches && dataMatches[1]) {
+                resultado.dataEmissao = formatarData(dataMatches[1]);
+                if (debug) console.log(`🔍 [HTML] Data extraída com regex alternativo: ${resultado.dataEmissao}`);
+                break;
+              }
             }
           }
         }
       } catch (preError) {
+        if (debug) console.log('⚠️ [HTML] Erro ao acessar página:', preError);
         // Ignora erros na pré-extração direta
       }
     }
     
     return resultado;
   } catch (error) {
+    if (debug) console.log('❌ [DIRETO] Erro na extração direta:', error);
     // Se ocorrer qualquer erro, retornar o que conseguimos até agora
     return resultado;
   }
@@ -308,7 +371,10 @@ function formatarValor(valor: string): string {
     }
     
     // Formatar valor para padrão brasileiro
-    return valorNumerico.toFixed(2).replace('.', ',');
+    return valorNumerico.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   } catch (e) {
     return '0,00';
   }

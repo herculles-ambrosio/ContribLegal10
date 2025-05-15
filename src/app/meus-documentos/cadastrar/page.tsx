@@ -190,6 +190,59 @@ export default function CadastrarDocumento() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Modificação na função de abertura do scanner para ser mais rápida
+  const handleOpenQrScanner = async () => {
+    // Verificar se o navegador suporta API de câmera
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error('Seu navegador não suporta acesso à câmera');
+      return;
+    }
+
+    try {
+      // Reset dos estados antes de abrir o scanner
+      setIsProcessingQrCode(false);
+      
+      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
+      setExtractionMessage('Preparando câmera para leitura do QR code...');
+      setIsExtracting(true);
+      
+      // Otimização: verificar permissão de câmera em background com timeout curto
+      const permissionPromise = navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      }).then(stream => {
+        // Fechar stream imediatamente após verificar permissão
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      }).catch(() => {
+        return false;
+      });
+      
+      // Definir timeout mais curto para verificação de permissão (1s)
+      const permissionTimeout = new Promise<boolean>(resolve => {
+        setTimeout(() => resolve(false), 1000);
+      });
+      
+      // Tentar obter permissão com timeout
+      const hasPermission = await Promise.race([permissionPromise, permissionTimeout]);
+      
+      // Mostrar scanner independente do resultado da permissão (o próprio componente lidará com erros)
+      // Isso elimina o atraso de verificação de permissão
+      setIsExtracting(false);
+      setCameraPermission(hasPermission);
+      setShowQrCodeScanner(true);
+      
+    } catch (error) {
+      console.error('Erro ao acessar câmera:', error);
+      setIsExtracting(false);
+      setCameraPermission(false);
+      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
+    }
+  };
+
   // Função para processar QR code
   const handleQrCodeScan = useCallback((qrCodeText: string) => {
     console.log("🔍 QR code lido:", qrCodeText);
@@ -244,8 +297,8 @@ export default function CadastrarDocumento() {
       console.log("🔒 Link original que será preservado:", originalLink);
       
       // Criar um timeout para garantir que o processamento não demore muito
-      // Reduzir tempo de timeout para 10 segundos para melhorar experiência do usuário
-      const timeoutDuration = 10000; // 10 segundos máximo
+      // Aumentar o tempo de timeout para 20 segundos para melhorar chance de extração bem-sucedida
+      const timeoutDuration = 20000; // 20 segundos máximo
       const extractionTimeoutId = setTimeout(() => {
         console.log("⏱️ TIMEOUT: Extração demorou muito tempo, cancelando");
         setIsExtracting(false);
@@ -294,7 +347,7 @@ export default function CadastrarDocumento() {
           // Atualizar todos os campos do formulário de uma vez
           setFormData(prev => ({ 
             ...prev, 
-            numero_documento: originalLink,
+            numero_documento: originalLink, // SEMPRE GARANTIR QUE ESTE É O LINK ORIGINAL
             valor: info.valor || '0,00',
             data_emissao: formatarDataParaInput(info.dataEmissao)
           }));
@@ -302,8 +355,15 @@ export default function CadastrarDocumento() {
           // Atualizar DOM diretamente para garantir que os dados sejam exibidos
           updateFormElementsDirect(originalLink, info.valor, info.dataEmissao);
           
+          // Verificar se temos valor e data válidos
+          const temDadosCompletos = info.valor && info.dataEmissao;
+          
           // Notificar sucesso com toast
-          toast.success("Dados extraídos com sucesso!");
+          if (temDadosCompletos) {
+            toast.success("Dados extraídos com sucesso!");
+          } else {
+            toast.success("QR code registrado, mas alguns dados não puderam ser extraídos automáticamente.");
+          }
           
           // Liberar processamento
           setIsProcessingQrCode(false);
@@ -319,13 +379,13 @@ export default function CadastrarDocumento() {
           // Garantir que pelo menos o número do documento está preenchido
           setFormData(prev => ({
             ...prev,
-            numero_documento: originalLink,
+            numero_documento: originalLink, // SEMPRE O LINK ORIGINAL
           }));
           
           if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
           
-          // Mostrar erro ao usuário
-          toast.error("Erro ao extrair dados do QR code. Tente novamente ou preencha manualmente.");
+          // Mostrar erro ao usuário com mensagem mais clara
+          toast.error("Não foi possível extrair todos os dados do QR code. Verifique e complete os campos necessários.");
           
           // Liberar processamento
           setIsProcessingQrCode(false);
@@ -334,7 +394,7 @@ export default function CadastrarDocumento() {
       console.error("❌ Erro ao processar QR code:", error);
       setIsExtracting(false);
       setIsProcessingQrCode(false);
-      toast.error("Erro ao processar o QR code. Tente novamente.");
+      toast.error("Erro ao processar o QR code. Tente novamente ou preencha manualmente.");
     }
   }, [isProcessingQrCode]);
 
@@ -391,59 +451,6 @@ export default function CadastrarDocumento() {
       element.dispatchEvent(evento);
     } catch (e) {
       console.error("Erro ao disparar evento input:", e);
-    }
-  };
-
-  // Modificação na função de abertura do scanner para ser mais rápida
-  const handleOpenQrScanner = async () => {
-    // Verificar se o navegador suporta API de câmera
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast.error('Seu navegador não suporta acesso à câmera');
-      return;
-    }
-
-    try {
-      // Reset dos estados antes de abrir o scanner
-      setIsProcessingQrCode(false);
-      
-      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
-      setExtractionMessage('Preparando câmera para leitura do QR code...');
-      setIsExtracting(true);
-      
-      // Otimização: verificar permissão de câmera em background com timeout curto
-      const permissionPromise = navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      }).then(stream => {
-        // Fechar stream imediatamente após verificar permissão
-        stream.getTracks().forEach(track => track.stop());
-        return true;
-      }).catch(() => {
-        return false;
-      });
-      
-      // Definir timeout mais curto para verificação de permissão (1s)
-      const permissionTimeout = new Promise<boolean>(resolve => {
-        setTimeout(() => resolve(false), 1000);
-      });
-      
-      // Tentar obter permissão com timeout
-      const hasPermission = await Promise.race([permissionPromise, permissionTimeout]);
-      
-      // Mostrar scanner independente do resultado da permissão (o próprio componente lidará com erros)
-      // Isso elimina o atraso de verificação de permissão
-      setIsExtracting(false);
-      setCameraPermission(hasPermission);
-      setShowQrCodeScanner(true);
-      
-    } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
-      setIsExtracting(false);
-      setCameraPermission(false);
-      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
     }
   };
 

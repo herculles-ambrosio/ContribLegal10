@@ -28,6 +28,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scannerContainerId = "qr-reader";
+  const lastScannedCode = useRef<string | null>(null);
   
   // Função para log com suporte a log externo
   const logDebug = useCallback((message: string) => {
@@ -73,31 +74,54 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
   const successCallback = useCallback((decodedText: string) => {
     logDebug(`QR code lido com sucesso: ${decodedText}`);
     
-    // Prevenir processamentos duplicados
+    // Prevenir processamentos duplicados e garantir que o código seja válido
     if (hasScanned) {
       logDebug('QR code já foi processado. Ignorando.');
       return;
     }
     
+    // Verifica se o código é o mesmo que já processamos antes
+    if (lastScannedCode.current === decodedText) {
+      logDebug('Mesmo QR code lido novamente. Ignorando.');
+      return;
+    }
+    
+    // Validar se o QR code tem um formato válido
+    // Deve ser uma URL ou ter pelo menos 10 caracteres para potencialmente ser um cupom fiscal
+    if (!decodedText || decodedText.length < 10) {
+      logDebug(`QR code inválido ou muito curto: ${decodedText}`);
+      setMessage('QR Code inválido. Tente novamente.');
+      return;
+    }
+    
+    // Registrar o código escaneado para evitar duplicação
+    lastScannedCode.current = decodedText;
+    
     // Marcar como já processado imediatamente
     setHasScanned(true);
     setMessage('QR Code detectado! Processando...');
     
+    // Armazenar o código lido para processamento
+    const scannedCode = decodedText;
+    
     // Parar scanner imediatamente e chamar callback
     stopScanner().then(() => {
       try {
-        logDebug(`Enviando resultado para componente pai: ${decodedText}`);
-        onScanSuccess(decodedText);
+        logDebug(`Enviando resultado para componente pai: ${scannedCode}`);
+        // Garantir que estamos enviando o código original completo
+        onScanSuccess(scannedCode);
       } catch (callbackError) {
         logDebug(`Erro ao chamar callback de sucesso: ${callbackError}`);
+        setHasScanned(false); // Resetar em caso de erro para permitir nova tentativa
       }
     }).catch((error) => {
       logDebug(`Erro ao parar scanner: ${error}`);
       // Tentar chamar callback mesmo se houver erro ao parar
       try {
-        onScanSuccess(decodedText);
+        onScanSuccess(scannedCode);
       } catch (finalError) {
         logDebug(`Erro final ao chamar callback: ${finalError}`);
+        setHasScanned(false); // Resetar em caso de erro para permitir nova tentativa
       }
     });
   }, [onScanSuccess, logDebug, stopScanner, hasScanned]);
@@ -120,12 +144,16 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       logDebug(`Iniciando scanner com câmera: ${cameraId}`);
       setMessage('Inicializando câmera...');
       
+      // Limpar status anterior
+      setHasScanned(false);
+      lastScannedCode.current = null;
+      
       // Criar uma nova instância do scanner
       const scanner = new Html5Qrcode(scannerContainerId);
       scannerRef.current = scanner;
       
       const config = { 
-        fps: 10, 
+        fps: 15, // Aumentar para melhor responsividade
         qrbox: 250,
         aspectRatio: 1.0,
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -181,6 +209,10 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     setMessage('Reiniciando scanner...');
     setScanAttempts(prev => prev + 1);
     
+    // Resetar estado
+    setHasScanned(false);
+    lastScannedCode.current = null;
+    
     try {
       await stopScanner();
       
@@ -198,233 +230,218 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       logDebug(`Erro ao reiniciar scanner: ${error}`);
       setMessage('Erro ao reiniciar. Tente novamente.');
     }
-  }, [logDebug, stopScanner, startScanner, currentCamera, cameras]);
+  }, [cameras, currentCamera, logDebug, startScanner, stopScanner]);
 
-  // Alternar entre câmeras disponíveis
-  const handleSwitchCamera = useCallback(async () => {
-    logDebug('Alternando câmera');
-    
-    if (!cameras || cameras.length <= 1) {
-      toast.error('Não há outras câmeras disponíveis');
-      return;
-    }
-    
-    try {
-      setMessage('Alternando câmera...');
-      await stopScanner();
-      
-      // Encontrar próxima câmera
-      const currentIndex = cameras.findIndex(camera => camera.id === currentCamera);
-      const nextIndex = (currentIndex + 1) % cameras.length;
-      const nextCameraId = cameras[nextIndex].id;
-      
-      // Atualizar câmera atual
-      setCurrentCamera(nextCameraId);
-      logDebug(`Alternando para câmera: ${nextCameraId}`);
-      
-      // Pequena pausa antes de reiniciar
-      setTimeout(() => {
-        startScanner(nextCameraId);
-      }, 500);
-      
-      // Resetar estado da lanterna
-      setTorchEnabled(false);
-    } catch (error) {
-      logDebug(`Erro ao alternar câmera: ${error}`);
-      setMessage('Erro ao alternar câmera. Tente novamente.');
-    }
-  }, [cameras, currentCamera, logDebug, stopScanner, startScanner]);
-
-  // Função para alternar lanterna (flash)
+  // Alternar lanterna
   const handleToggleTorch = useCallback(async () => {
     if (!scannerRef.current) {
-      toast.error('Scanner não disponível');
       return;
     }
     
     try {
-      logDebug('Tentando alternar lanterna');
-      const cameraCapabilities = scannerRef.current.getRunningTrackCameraCapabilities();
-      
-      if (!cameraCapabilities) {
-        toast.error('Recursos de câmera não disponíveis');
-        return;
+      if (torchEnabled) {
+        // Usando as API via cast para any
+        await (scannerRef.current as any).disableTorch();
+        setTorchEnabled(false);
+      } else {
+        // Usando as API via cast para any
+        await (scannerRef.current as any).enableTorch();
+        setTorchEnabled(true);
       }
-      
-      const torchFeature = cameraCapabilities.torchFeature();
-      
-      if (!torchFeature.isSupported()) {
-        toast.error('Este dispositivo não suporta lanterna');
-        return;
-      }
-      
-      // Alternar estado da lanterna
-      const newTorchState = !torchEnabled;
-      torchFeature.apply(newTorchState);
-      setTorchEnabled(newTorchState);
-      setMessage(newTorchState ? 'Lanterna ligada' : 'Lanterna desligada');
-      
-      // Voltar à mensagem normal após 1.5 segundos
-      setTimeout(() => {
-        setMessage('Aponte a câmera para o QR Code');
-      }, 1500);
     } catch (error) {
       logDebug(`Erro ao alternar lanterna: ${error}`);
-      toast.error('Não foi possível acessar a lanterna');
+      toast.error('Lanterna não disponível neste dispositivo');
     }
   }, [torchEnabled, logDebug]);
 
-  // Inicializar o scanner e obter lista de câmeras
-  useEffect(() => {
-    if (typeof window === 'undefined' || hasScanned) return;
+  // Alternar câmera
+  const handleSwitchCamera = useCallback(async () => {
+    try {
+      // Se estamos usando a primeira câmera, alternar para a segunda
+      // Se estamos usando a segunda, alternar para a primeira
+      const newCameraIndex = cameras.findIndex(cam => cam.id === currentCamera) === 0 ? 1 : 0;
+      
+      // Verificar se a câmera existe
+      if (cameras.length <= newCameraIndex) {
+        toast.error('Não há outra câmera disponível');
+        return;
+      }
+      
+      const newCameraId = cameras[newCameraIndex].id;
+      logDebug(`Alternando para câmera: ${newCameraId}`);
+      
+      // Parar scanner atual
+      await stopScanner();
+      
+      // Resetar estado
+      setHasScanned(false);
+      lastScannedCode.current = null;
+      
+      // Iniciar com nova câmera
+      setCurrentCamera(newCameraId);
+      await startScanner(newCameraId);
+      
+      toast.success(`Câmera alterada para ${cameras[newCameraIndex].label || 'Alternativa'}`);
+    } catch (error) {
+      logDebug(`Erro ao alternar câmera: ${error}`);
+      toast.error('Erro ao alternar câmera');
+    }
+  }, [cameras, currentCamera, logDebug, startScanner, stopScanner]);
 
-    logDebug('Inicializando componente QrCodeScanner');
-    setScanStatus('initializing');
-    
-    // Detectar câmeras disponíveis
+  // Detectar câmeras
+  useEffect(() => {
     const detectCameras = async () => {
       try {
-        const devices = await Html5Qrcode.getCameras();
-        logDebug(`Câmeras detectadas: ${devices.length}`);
+        setScanStatus('initializing');
+        logDebug('Iniciando detecção de câmeras...');
         
-        if (devices && devices.length > 0) {
-          setCameras(devices);
-          
-          // Selecionar câmera traseira por padrão
-          let bestCamera = devices[0].id;
-          
-          for (const device of devices) {
-            const label = device.label.toLowerCase();
-            if (label.includes('back') || label.includes('traseira') || label.includes('environment') || label.includes('rear')) {
-              bestCamera = device.id;
-              logDebug(`Câmera traseira detectada: ${device.label}`);
-              break;
-            }
-          }
-          
-          setCurrentCamera(bestCamera);
-          logDebug(`Câmera selecionada: ${bestCamera}`);
-          
-          // Iniciar scanner com a câmera selecionada
-          const success = await startScanner(bestCamera);
-          
-          if (!success) {
-            // Se falhar, tentar com configuração padrão 'environment'
-            logDebug('Tentando iniciar com configuração environment');
-            await startScanner('environment');
-          }
-        } else {
-          // Sem câmeras, tentar iniciar com environment
-          logDebug('Nenhuma câmera detectada, tentando com environment');
-          setMessage('Nenhuma câmera detectada. Tentando câmera padrão...');
-          await startScanner('environment');
+        // Verifica se tem suporte à API MediaDevices
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+          logDebug('API MediaDevices não suportada');
+          setMessage('Seu navegador não suporta acesso à câmera');
+          setScanStatus('error');
+          return;
         }
+        
+        // Solicitar permissão de acesso à câmera
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // Parar stream após obter permissão
+          stream.getTracks().forEach(track => track.stop());
+        } catch (error) {
+          logDebug(`Erro ao obter permissão de câmera: ${error}`);
+          setMessage('Permissão de câmera negada. Verifique as configurações do navegador.');
+          setScanStatus('error');
+          
+          if (onScanError) {
+            onScanError('Permissão de câmera negada');
+          }
+          return;
+        }
+        
+        // Listar dispositivos disponíveis
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        if (videoDevices.length === 0) {
+          logDebug('Nenhuma câmera encontrada');
+          setMessage('Nenhuma câmera encontrada no dispositivo');
+          setScanStatus('error');
+          return;
+        }
+        
+        // Mapear câmeras disponíveis
+        const cameraOptions = videoDevices.map(device => ({
+          id: device.deviceId,
+          label: device.label || `Câmera ${device.deviceId.slice(0, 5)}`
+        }));
+        
+        setCameras(cameraOptions);
+        logDebug(`${cameraOptions.length} câmeras encontradas`);
+        
+        // Usar câmera traseira por padrão se houver mais de uma câmera
+        // Geralmente, câmeras traseiras têm 'back' ou 'environment' no label
+        let defaultCamera = cameraOptions[0].id;
+        
+        // Preferir câmera traseira em dispositivos móveis
+        const backCamera = cameraOptions.find(camera => 
+          camera.label.toLowerCase().includes('back') || 
+          camera.label.toLowerCase().includes('traseira') ||
+          camera.label.toLowerCase().includes('environment')
+        );
+        
+        if (backCamera) {
+          defaultCamera = backCamera.id;
+          logDebug(`Câmera traseira encontrada: ${backCamera.label}`);
+        }
+        
+        setCurrentCamera(defaultCamera);
+        setScanStatus('ready');
+        
+        // Iniciar scanner automaticamente
+        startScanner(defaultCamera);
+        
       } catch (error) {
         logDebug(`Erro ao detectar câmeras: ${error}`);
         setMessage('Erro ao acessar câmeras. Verifique as permissões do navegador.');
         setScanStatus('error');
         
-        // Tentar iniciar com 'environment' como fallback
-        try {
-          await startScanner('environment');
-        } catch (fallbackError) {
-          logDebug(`Erro ao iniciar com fallback: ${fallbackError}`);
-          if (onScanError) {
-            onScanError('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
-          }
+        if (onScanError) {
+          onScanError(error);
         }
       }
     };
     
     detectCameras();
     
-    // Cleanup ao desmontar
+    // Limpar ao desmontar
     return () => {
-      logDebug('Componente desmontando, limpando recursos');
       if (scannerRef.current) {
-        scannerRef.current.stop().catch(error => {
-          logDebug(`Erro ao parar scanner durante cleanup: ${error}`);
-        });
+        logDebug('Limpando scanner ao desmontar componente');
+        stopScanner().catch(error => logDebug(`Erro ao limpar scanner: ${error}`));
       }
     };
-  }, [logDebug, startScanner, onScanError, hasScanned, stopScanner]);
+  }, [logDebug, onScanError, startScanner, stopScanner]);
 
   return (
-    <div className="qr-scanner-container">
-      <div className="scanner-status-indicator mb-2 text-center">
-        {scanStatus === 'initializing' && (
-          <div className="animate-pulse text-yellow-500 flex items-center justify-center">
-            <FaCamera className="mr-2" /> Inicializando câmera...
-          </div>
-        )}
+    <div className="flex flex-col items-center w-full max-w-md mx-auto bg-white rounded-lg shadow-md p-4">
+      <div className="text-center mb-2">
+        <h3 className="text-lg font-semibold text-gray-700">Scanner de QR Code</h3>
+        <p className="text-sm text-gray-500">{message}</p>
+      </div>
+      
+      <div 
+        ref={containerRef} 
+        className="w-full h-64 relative bg-gray-100 rounded-md overflow-hidden mb-4"
+      >
+        <div id={scannerContainerId} className="w-full h-full" />
+        
         {scanStatus === 'error' && (
-          <div className="text-red-500 flex items-center justify-center">
-            <FaExclamationTriangle className="mr-2" /> Erro ao acessar câmera
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white p-4 text-center">
+            <div className="flex flex-col items-center">
+              <FaExclamationTriangle className="text-3xl text-yellow-400 mb-2" />
+              <p>{message}</p>
+              <button 
+                onClick={handleRestartScanner}
+                className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center"
+              >
+                <FaRedo className="mr-2" /> Tentar Novamente
+              </button>
+            </div>
           </div>
         )}
       </div>
       
-      <div className="qr-reader-container relative">
-        <div ref={containerRef} id={scannerContainerId} style={{ 
-          width: '100%', 
-          minHeight: '250px',
-          position: 'relative',
-          overflow: 'hidden',
-          borderRadius: '8px',
-          boxShadow: '0 0 10px rgba(0,0,0,0.2)'
-        }}></div>
+      <div className="flex flex-wrap justify-center gap-2 mt-2">
+        <Button 
+          onClick={handleRestartScanner}
+          variant="secondary"
+          className="flex items-center"
+        >
+          <FaRedo className="mr-2" /> Reiniciar
+        </Button>
         
-        {/* Guia visual para posicionar o QR code */}
-        <div className="qr-guide absolute top-0 left-0 w-full h-full pointer-events-none flex items-center justify-center">
-          <div className="border-2 border-dashed border-blue-500 w-64 h-64 opacity-70 rounded-lg"></div>
-        </div>
+        {cameras.length > 1 && (
+          <Button 
+            onClick={handleSwitchCamera}
+            variant="secondary"
+            className="flex items-center"
+          >
+            <FaCamera className="mr-2" /> Trocar Câmera
+          </Button>
+        )}
+        
+        <Button 
+          onClick={handleToggleTorch}
+          variant={torchEnabled ? "primary" : "secondary"}
+          className="flex items-center"
+        >
+          <FaLightbulb className="mr-2" /> {torchEnabled ? 'Desligar Luz' : 'Ligar Luz'}
+        </Button>
       </div>
       
-      <div className="mt-4 text-center text-sm">
-        <p className={`mb-2 ${isScanning ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-          {message}
-        </p>
-        
-        <div className="flex justify-center space-x-2 mt-3">
-          {cameras.length > 1 && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleSwitchCamera}
-              className="text-xs py-1 px-3 flex items-center"
-              aria-label="Alternar câmera"
-            >
-              <FaSync className="mr-1" size={14} />
-              Trocar Câmera
-            </Button>
-          )}
-          
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleToggleTorch}
-            className="text-xs py-1 px-3 flex items-center"
-            aria-label="Lanterna"
-          >
-            <FaLightbulb className={`mr-1 ${torchEnabled ? 'text-yellow-400' : ''}`} size={14} />
-            {torchEnabled ? 'Desligar Luz' : 'Ligar Lanterna'}
-          </Button>
-          
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleRestartScanner}
-            className="text-xs py-1 px-3 flex items-center"
-            aria-label="Reiniciar"
-          >
-            <FaRedo className="mr-1" size={14} />
-            Reiniciar
-          </Button>
-        </div>
-        
-        <p className="mt-4 text-xs text-gray-500">
-          Se o QR code não for detectado automaticamente, tente ajustar a distância ou iluminação.
-        </p>
+      <div className="text-xs text-gray-400 text-center mt-4">
+        Posicione o QR code do cupom fiscal dentro da área de leitura
       </div>
     </div>
   );
