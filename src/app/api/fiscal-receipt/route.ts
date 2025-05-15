@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     
     // Inicializar o controller para timeout da requisição
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
     // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
     try {

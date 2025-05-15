@@ -38,7 +38,7 @@ export async function extractDataFromFiscalReceipt(
     // Fazer requisição para nossa API com timeout aumentado para 20 segundos
     // para melhorar a chance de sucesso na extração
     const controller = new AbortController();
-    const timeoutDuration = REDUCED_TIMEOUT ? 8000 : 20000; // 8 ou 20 segundos
+    const timeoutDuration = REDUCED_TIMEOUT ? 5000 : 12000; // 5 ou 12 segundos
     const timeoutId = setTimeout(() => {
       if (DEBUG) console.log('⚠️ TIMEOUT ACIONADO! Abortando requisição após', timeoutDuration/1000, 'segundos');
       controller.abort();
