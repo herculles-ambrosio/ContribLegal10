@@ -154,7 +154,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       
       const config = { 
         fps: 15, // Aumentar para melhor responsividade
-        qrbox: 250,
+        qrbox: 350, // Aumentado de 250 para 350 para ter uma área de captura maior
         aspectRatio: 1.0,
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         experimentalFeatures: {
@@ -392,7 +392,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       
       <div 
         ref={containerRef} 
-        className="w-full h-64 relative bg-gray-100 rounded-md overflow-hidden mb-4"
+        className="w-full h-80 relative bg-gray-100 rounded-md overflow-hidden mb-4"
       >
         <div id={scannerContainerId} className="w-full h-full" />
         

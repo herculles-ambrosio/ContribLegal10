@@ -21,7 +21,15 @@ export default function useDeviceDetect(): DeviceInfo {
 
     const userAgent = navigator.userAgent.toLowerCase();
     
-    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent);
+    // Verificar user agent para dispositivos móveis
+    const isMobileUserAgent = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent);
+    
+    // Verificar também a largura da tela (geralmente abaixo de 768px para dispositivos móveis)
+    const isMobileScreenSize = window.innerWidth <= 768;
+    
+    // Considerar dispositivo móvel se o user agent indicar ou a tela for pequena
+    const isMobileDevice = isMobileUserAgent || isMobileScreenSize;
+    
     const isIOSDevice = /iphone|ipad|ipod/i.test(userAgent);
     const isAndroidDevice = /android/i.test(userAgent);
 
@@ -30,6 +38,22 @@ export default function useDeviceDetect(): DeviceInfo {
       isIOS: isIOSDevice,
       isAndroid: isAndroidDevice
     });
+    
+    // Adicionar listener para redimensionamento de janela
+    const handleResize = () => {
+      const newIsMobileScreenSize = window.innerWidth <= 768;
+      setDeviceInfo(prev => ({
+        ...prev,
+        isMobile: isMobileUserAgent || newIsMobileScreenSize
+      }));
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   return deviceInfo;

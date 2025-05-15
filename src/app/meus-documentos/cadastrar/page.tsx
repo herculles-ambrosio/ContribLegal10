@@ -741,7 +741,7 @@ export default function CadastrarDocumento() {
                       <FaExternalLinkAlt size={16} />
                     </Button>
                   )}
-                  {formData.tipo === 'cupom_fiscal' && (
+                  {formData.tipo === 'cupom_fiscal' && isMobile && (
                     <Button
                       type="button"
                       variant="info"
@@ -752,6 +752,11 @@ export default function CadastrarDocumento() {
                     >
                       <FaQrcode size={16} />
                     </Button>
+                  )}
+                  {formData.tipo === 'cupom_fiscal' && !isMobile && (
+                    <span className="text-xs text-blue-300 italic ml-1 mr-2">
+                      Scanner disponível apenas em dispositivos móveis
+                    </span>
                   )}
                 </div>
               </div>
