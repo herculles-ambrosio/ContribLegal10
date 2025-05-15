@@ -227,6 +227,14 @@ export default function PainelContribuinte() {
     return data.toLocaleDateString('pt-BR');
   };
 
+  const navigateToDocuments = (filter?: string) => {
+    if (filter) {
+      router.push(`/meus-documentos?filter=${filter}`);
+    } else {
+      router.push('/meus-documentos');
+    }
+  };
+
   return (
     <Layout isAuthenticated>
       <div className="mb-6">
@@ -255,7 +263,7 @@ export default function PainelContribuinte() {
       
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white cursor-pointer hover:shadow-lg transition-all" onClick={() => navigateToDocuments()}>
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-medium mb-1">Total de Cupons</h3>
@@ -270,7 +278,7 @@ export default function PainelContribuinte() {
           </div>
         </Card>
         
-        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white cursor-pointer hover:shadow-lg transition-all" onClick={() => navigateToDocuments('validados')}>
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-medium mb-1">Cupons Validados</h3>
@@ -285,7 +293,7 @@ export default function PainelContribuinte() {
           </div>
         </Card>
         
-        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white cursor-pointer hover:shadow-lg transition-all" onClick={() => navigateToDocuments()}>
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-medium mb-1">Valor Total</h3>

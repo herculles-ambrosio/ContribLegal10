@@ -11,7 +11,21 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 
 4. **Redução significativa do tempo de processamento** - foram implementados timeouts mais curtos e processamento paralelo para evitar esperas longas.
 
+5. **Navegação intuitiva no Painel do Contribuinte** - implementação de dashboards clicáveis que permitem acesso direto à grid de visualização de cupons com filtros específicos:
+   - Dashboard "Total de Cupons" - redireciona para a lista completa de cupons
+   - Dashboard "Cupons Validados" - redireciona para a lista filtrada de cupons validados
+
 ## Mudanças Recentes
+
+### Dashboard do Contribuinte (page.tsx)
+- Transformação dos cards de estatísticas em elementos clicáveis
+- Implementação de função `navigateToDocuments` para redirecionamento com filtros
+- Adição de efeitos visuais para melhorar a experiência do usuário
+
+### Página de Documentos (page.tsx)
+- Implementação de sistema de filtragem para mostrar documentos por status
+- Exibição visual do filtro ativo com opção de remoção
+- Melhoria nas mensagens de feedback quando não há documentos encontrados com o filtro aplicado
 
 ### Serviço de Extração de Dados (fiscalReceiptService.ts)
 - Implementação de logs detalhados para facilitar a depuração
@@ -40,3 +54,4 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 - Monitorar o desempenho das melhorias implementadas
 - Continuar refinando as técnicas de extração para aumentar a taxa de sucesso
 - Implementar mecanismos de feedback para que usuários possam reportar problemas específicos 
+- Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FaPlus, FaDownload, FaEye, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaPrint, FaCheck, FaFileContract, FaFilter } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
@@ -34,11 +34,43 @@ const logoBase64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
 
 export default function MeusDocumentos() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
+  const [documentosFiltrados, setDocumentosFiltrados] = useState<Documento[]>([]);
   const [documentoSelecionado, setDocumentoSelecionado] = useState<Documento | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [urlArquivo, setUrlArquivo] = useState<string | null>(null);
+  const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const filter = searchParams.get('filter');
+    setFiltroAtivo(filter);
+    
+    // Aplicar filtro nos documentos se existir
+    if (documentos.length > 0) {
+      aplicarFiltro(filter);
+    }
+  }, [searchParams, documentos]);
+
+  const aplicarFiltro = (filtro: string | null) => {
+    if (!filtro) {
+      setDocumentosFiltrados(documentos);
+      return;
+    }
+
+    let docsFiltered = [...documentos];
+    
+    if (filtro === 'validados') {
+      docsFiltered = documentos.filter(doc => doc.status === 'VALIDADO');
+    }
+    
+    setDocumentosFiltrados(docsFiltered);
+  };
+
+  const limparFiltro = () => {
+    router.push('/meus-documentos');
+  };
 
   useEffect(() => {
     const carregarDocumentos = async () => {
@@ -82,6 +114,15 @@ export default function MeusDocumentos() {
         }
         
         setDocumentos(documentosFormatados);
+
+        // Aplicar filtro inicial se existir
+        const filtroInicial = searchParams.get('filter');
+        if (filtroInicial) {
+          aplicarFiltro(filtroInicial);
+        } else {
+          setDocumentosFiltrados(documentosFormatados);
+        }
+        
         setIsLoading(false);
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -90,7 +131,7 @@ export default function MeusDocumentos() {
     };
     
     carregarDocumentos();
-  }, [router]);
+  }, [router, searchParams]);
   
   const getTipoDocumentoLabel = (tipo: string): string => {
     switch (tipo) {
@@ -254,7 +295,25 @@ export default function MeusDocumentos() {
     <Layout isAuthenticated>
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-blue-700">Meus Documentos</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-blue-700">Meus Documentos</h1>
+            {filtroAtivo && (
+              <div className="flex items-center mt-2">
+                <span className="text-sm text-gray-600 mr-2">
+                  Filtro ativo: 
+                  <span className="ml-1 font-medium">
+                    {filtroAtivo === 'validados' ? 'Cupons Validados' : filtroAtivo}
+                  </span>
+                </span>
+                <button 
+                  onClick={limparFiltro}
+                  className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 px-2 rounded flex items-center"
+                >
+                  <span>Limpar</span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={abrirCadastro}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
@@ -267,7 +326,7 @@ export default function MeusDocumentos() {
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
           </div>
-        ) : documentos.length === 0 ? (
+        ) : documentosFiltrados.length === 0 ? (
           <div className="bg-white shadow-md rounded-lg p-6 text-center">
             <div className="flex justify-center mb-4">
               <Image 
@@ -277,16 +336,31 @@ export default function MeusDocumentos() {
                 height={150} 
               />
             </div>
-            <h2 className="text-xl font-semibold mb-2">Você ainda não possui documentos cadastrados</h2>
+            <h2 className="text-xl font-semibold mb-2">
+              {filtroAtivo ? 'Nenhum documento encontrado com este filtro' : 'Você ainda não possui documentos cadastrados'}
+            </h2>
             <p className="text-gray-600 mb-4">
-              Cadastre seus documentos fiscais para participar dos sorteios
+              {filtroAtivo ? (
+                <>
+                  <button 
+                    onClick={limparFiltro} 
+                    className="text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Remover filtro
+                  </button> para ver todos os seus documentos
+                </>
+              ) : (
+                'Cadastre seus documentos fiscais para participar dos sorteios'
+              )}
             </p>
-            <button
-              onClick={abrirCadastro}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-            >
-              Cadastrar Meu Primeiro Documento
-            </button>
+            {!filtroAtivo && (
+              <button
+                onClick={abrirCadastro}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+              >
+                Cadastrar Meu Primeiro Documento
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -315,7 +389,7 @@ export default function MeusDocumentos() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {documentos.map((documento) => (
+                  {documentosFiltrados.map((documento) => (
                     <tr key={documento.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
