@@ -15,7 +15,16 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
    - Dashboard "Total de Cupons" - redireciona para a lista completa de cupons
    - Dashboard "Cupons Validados" - redireciona para a lista filtrada de cupons validados
 
+6. **Compatibilidade com Next.js 15** - correção do erro de rendering com o hook useSearchParams() utilizando Suspense boundaries:
+   - Reestruturação do componente de listagem de documentos para seguir as melhores práticas do Next.js 15
+   - Implementação de componente de carregamento apropriado enquanto os parâmetros da URL são processados
+
 ## Mudanças Recentes
+
+### Correção do Erro de Rendering no Next.js 15 (page.tsx)
+- Implementação de Suspense boundary para o componente que utiliza useSearchParams()
+- Separação da lógica em componentes isolados para melhor gestão de estado
+- Adição de fallback visual durante o carregamento
 
 ### Dashboard do Contribuinte (page.tsx)
 - Transformação dos cards de estatísticas em elementos clicáveis
@@ -49,9 +58,11 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 - Variabilidade de formatos e estruturas nas páginas de cupons fiscais entre diferentes estados
 - Necessidade de constante monitoramento e ajuste das técnicas de extração
 - Garantia de desempenho adequado mesmo com conexões de internet lentas
+- Resolução de problemas de compatibilidade com novas versões do Next.js
 
 ## Próximos Passos
 - Monitorar o desempenho das melhorias implementadas
 - Continuar refinando as técnicas de extração para aumentar a taxa de sucesso
 - Implementar mecanismos de feedback para que usuários possam reportar problemas específicos 
-- Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor 
+- Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor
+- Implementar testes automatizados para garantir compatibilidade com futuras atualizações do framework 
