@@ -190,48 +190,6 @@ export default function CadastrarDocumento() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Função para abrir o scanner de QR Code
-  const handleOpenQrScanner = async () => {
-    // Verificar se o navegador suporta API de câmera
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast.error('Seu navegador não suporta acesso à câmera');
-      return;
-    }
-
-    try {
-      // Reset dos estados antes de abrir o scanner
-      setIsProcessingQrCode(false);
-      
-      // Solicitar permissão para usar a câmera
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      });
-      
-      // Fechar stream imediatamente para não consumir recursos
-      stream.getTracks().forEach(track => track.stop());
-      
-      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
-      setExtractionMessage('Preparando câmera para leitura do QR code...');
-      setIsExtracting(true);
-      
-      // Usar um curto timeout para dar feedback visual ao usuário
-      setTimeout(() => {
-        setIsExtracting(false);
-        // Definir que temos permissão e mostrar scanner
-        setCameraPermission(true);
-        setShowQrCodeScanner(true);
-      }, 500);
-    } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
-      setCameraPermission(false);
-      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
-    }
-  };
-
   // Função para processar QR code
   const handleQrCodeScan = useCallback((qrCodeText: string) => {
     console.log("🔍 QR code lido:", qrCodeText);
@@ -279,15 +237,15 @@ export default function CadastrarDocumento() {
       }
       
       // Mostrar feedback que estamos processando o QR code
-      setExtractionMessage('Extraindo dados do cupom fiscal - isso pode levar alguns segundos...');
+      setExtractionMessage('Extraindo dados do cupom fiscal...');
       setIsExtracting(true);
       
       // Manter uma REFERÊNCIA DIRETA ao link original que deve persistir durante todo o processamento
       console.log("🔒 Link original que será preservado:", originalLink);
       
       // Criar um timeout para garantir que o processamento não demore muito
-      // para melhorar a experiência do usuário
-      const timeoutDuration = 20000; // 20 segundos máximo
+      // Reduzir tempo de timeout para 10 segundos para melhorar experiência do usuário
+      const timeoutDuration = 10000; // 10 segundos máximo
       const extractionTimeoutId = setTimeout(() => {
         console.log("⏱️ TIMEOUT: Extração demorou muito tempo, cancelando");
         setIsExtracting(false);
@@ -303,8 +261,15 @@ export default function CadastrarDocumento() {
         // Atualizar DOM
         if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
         
-        toast.error("A extração demorou muito tempo. Os campos foram preenchidos com os dados disponíveis.");
+        toast.error("Tempo de extração excedido. Os campos foram preenchidos com os dados disponíveis.");
         setIsProcessingQrCode(false);
+        
+        // Oferecer ao usuário a opção de tentar novamente o scanner
+        setTimeout(() => {
+          if (window.confirm("Deseja tentar escanear o QR code novamente?")) {
+            handleOpenQrScanner();
+          }
+        }, 300);
       }, timeoutDuration);
       
       // Chamar API para extrair dados adicionais
@@ -326,290 +291,161 @@ export default function CadastrarDocumento() {
             console.warn("⚠️ ALERTA: Número do documento foi alterado pela API, restaurando link original");
           }
           
-          // SEMPRE usar o link original como número do documento
-          setFormData(prev => ({ ...prev, numero_documento: originalLink }));
+          // Atualizar todos os campos do formulário de uma vez
+          setFormData(prev => ({ 
+            ...prev, 
+            numero_documento: originalLink,
+            valor: info.valor || '0,00',
+            data_emissao: formatarDataParaInput(info.dataEmissao)
+          }));
           
-          // Garantir que o DOM também tenha o link original
-          if (numeroDocumentoRef.current) {
-            numeroDocumentoRef.current.value = originalLink;
-            try {
-              const evento = new Event('input', { bubbles: true });
-              numeroDocumentoRef.current.dispatchEvent(evento);
-            } catch (e) {
-              console.error("⚠️ Erro ao disparar evento input para número do documento:", e);
-            }
-          }
-
-          // Processar e formatar o valor
-          if (info.valor && info.valor.trim() !== '') {
-            try {
-              console.log("Processando valor bruto:", info.valor);
-              
-              // Normalizar primeiro - remover formatação existente e símbolos
-              let valorTexto = info.valor.toString();
-              
-              // Remover todos os caracteres não numéricos, exceto vírgula e ponto
-              valorTexto = valorTexto.replace(/[^\d,\.]/g, '');
-              
-              // Substituir pontos por nada (assumindo que são separadores de milhar)
-              valorTexto = valorTexto.replace(/\./g, '');
-              
-              // Substituir vírgula por ponto para operações numéricas
-              valorTexto = valorTexto.replace(',', '.');
-              
-              console.log("Valor normalizado:", valorTexto);
-              
-              const valorNumerico = parseFloat(valorTexto);
-              
-              if (!isNaN(valorNumerico) && valorNumerico > 0) {
-                // Formatar em estilo brasileiro (R$ 10,50)
-                const valorFormatado = valorNumerico.toLocaleString('pt-BR', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                });
-                
-                console.log("Valor formatado para BRL:", valorFormatado);
-                
-                // PRIMEIRO NÍVEL: Atualizar estado React
-                setFormData(prev => ({ ...prev, valor: valorFormatado }));
-                
-                // SEGUNDO NÍVEL: Atualizar DOM diretamente
-                if (valorRef.current) {
-                  console.log("Atualizando DOM diretamente - Valor:", valorFormatado);
-                  valorRef.current.value = valorFormatado;
-                  
-                  // Disparar evento
-                  try {
-                    const evento = new Event('input', { bubbles: true });
-                    valorRef.current.dispatchEvent(evento);
-                  } catch (e) {
-                    console.error("Erro ao disparar evento input para valor:", e);
-                  }
-                }
-              } else {
-                console.error("Valor não numérico ou zero:", info.valor);
-                // FALLBACK: Usar valor padrão
-                setFormData(prev => ({ ...prev, valor: '0,00' }));
-                
-                // Atualizar DOM
-                if (valorRef.current) {
-                  valorRef.current.value = '0,00';
-                  try {
-                    const evento = new Event('input', { bubbles: true });
-                    valorRef.current.dispatchEvent(evento);
-                  } catch (e) {
-                    console.error("Erro ao disparar evento input para valor padrão:", e);
-                  }
-                }
-              }
-            } catch (error) {
-              console.error("Erro ao processar valor:", error);
-              // Valor padrão em caso de erro
-              setFormData(prev => ({ ...prev, valor: '0,00' }));
-              
-              // Atualizar DOM
-              if (valorRef.current) {
-                valorRef.current.value = '0,00';
-                try {
-                  const evento = new Event('input', { bubbles: true });
-                  valorRef.current.dispatchEvent(evento);
-                } catch (e) {
-                  console.error("Erro ao disparar evento input para valor padrão (após erro):", e);
-                }
-              }
-            }
-          } else {
-            // Valor padrão se não houver dado
-            setFormData(prev => ({ ...prev, valor: '0,00' }));
-            
-            // Atualizar DOM
-            if (valorRef.current) {
-              valorRef.current.value = '0,00';
-              try {
-                const evento = new Event('input', { bubbles: true });
-                valorRef.current.dispatchEvent(evento);
-              } catch (e) {
-                console.error("Erro ao disparar evento input para valor padrão (sem dados):", e);
-              }
-            }
-          }
+          // Atualizar DOM diretamente para garantir que os dados sejam exibidos
+          updateFormElementsDirect(originalLink, info.valor, info.dataEmissao);
           
-          // Processar e formatar a data
-          if (info.dataEmissao && info.dataEmissao.trim() !== '') {
-            try {
-              console.log("Processando data bruta:", info.dataEmissao);
-              
-              let dataFormatada = info.dataEmissao.trim();
-              let dataParaInput = '';  // Para o input HTML (YYYY-MM-DD)
-              let dataVisualizacao = ''; // Para exibição (DD/MM/YYYY)
-              
-              // Se estiver em formato DD/MM/YYYY (brasileiro)
-              if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataFormatada)) {
-                const [dia, mes, ano] = dataFormatada.split('/');
-                dataParaInput = `${ano}-${mes}-${dia}`;
-                dataVisualizacao = dataFormatada;
-              } 
-              // Se estiver com outros separadores (- ou .)
-              else if (/^\d{2}[-\.]\d{2}[-\.]\d{4}$/.test(dataFormatada)) {
-                const partes = dataFormatada.split(/[-\.]/);
-                dataParaInput = `${partes[2]}-${partes[1]}-${partes[0]}`;
-                dataVisualizacao = `${partes[0]}/${partes[1]}/${partes[2]}`;
-              }
-              // Se já estiver no formato ISO (YYYY-MM-DD)
-              else if (/^\d{4}-\d{2}-\d{2}$/.test(dataFormatada)) {
-                dataParaInput = dataFormatada;
-                const [ano, mes, dia] = dataFormatada.split('-');
-                dataVisualizacao = `${dia}/${mes}/${ano}`;
-              }
-              // Outros formatos possíveis (YYYY/MM/DD)
-              else if (/^\d{4}\/\d{2}\/\d{2}$/.test(dataFormatada)) {
-                const [ano, mes, dia] = dataFormatada.split('/');
-                dataParaInput = `${ano}-${mes}-${dia}`;
-                dataVisualizacao = `${dia}/${mes}/${ano}`;
-              }
-              // Se não conseguiu interpretar o formato, usar a data atual
-              else {
-                const hoje = new Date();
-                const dia = String(hoje.getDate()).padStart(2, '0');
-                const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-                const ano = hoje.getFullYear();
-                
-                dataParaInput = `${ano}-${mes}-${dia}`;
-                dataVisualizacao = `${dia}/${mes}/${ano}`;
-              }
-              
-              console.log("Data formatada para input HTML:", dataParaInput);
-              console.log("Data formatada para visualização:", dataVisualizacao);
-              
-              // PRIMEIRO NÍVEL: Atualizar estado React com formato para input
-              setFormData(prev => ({ ...prev, data_emissao: dataParaInput }));
-              
-              // SEGUNDO NÍVEL: Atualizar DOM diretamente
-              if (dataEmissaoRef.current) {
-                console.log("Atualizando DOM diretamente - Data Emissão:", dataParaInput);
-                dataEmissaoRef.current.value = dataParaInput;
-                
-                // Disparar evento
-                try {
-                  const evento = new Event('input', { bubbles: true });
-                  dataEmissaoRef.current.dispatchEvent(evento);
-                } catch (e) {
-                  console.error("Erro ao disparar evento input para data:", e);
-                }
-              }
-            } catch (error) {
-              console.error("Erro ao processar data:", error);
-              // Data padrão (hoje) em caso de erro
-              const hoje = new Date();
-              const dia = String(hoje.getDate()).padStart(2, '0');
-              const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-              const ano = hoje.getFullYear();
-              const dataISOHoje = `${ano}-${mes}-${dia}`;
-              
-              setFormData(prev => ({ ...prev, data_emissao: dataISOHoje }));
-              
-              // Atualizar DOM
-              if (dataEmissaoRef.current) {
-                dataEmissaoRef.current.value = dataISOHoje;
-                try {
-                  const evento = new Event('input', { bubbles: true });
-                  dataEmissaoRef.current.dispatchEvent(evento);
-                } catch (e) {
-                  console.error("Erro ao disparar evento input para data padrão (após erro):", e);
-                }
-              }
-            }
-          } else {
-            // Data padrão (hoje) se não houver dado
-            const hoje = new Date();
-            const dia = String(hoje.getDate()).padStart(2, '0');
-            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-            const ano = hoje.getFullYear();
-            const dataISOHoje = `${ano}-${mes}-${dia}`;
-            
-            setFormData(prev => ({ ...prev, data_emissao: dataISOHoje }));
-            
-            // Atualizar DOM
-            if (dataEmissaoRef.current) {
-              dataEmissaoRef.current.value = dataISOHoje;
-              try {
-                const evento = new Event('input', { bubbles: true });
-                dataEmissaoRef.current.dispatchEvent(evento);
-              } catch (e) {
-                console.error("Erro ao disparar evento input para data padrão (sem dados):", e);
-              }
-            }
-          }
-          
-          // VERIFICAÇÃO FINAL: Verificar todos os valores e corrigir se necessário
-          setTimeout(() => {
-            console.log("🔍 Verificação final de segurança dos dados");
-            
-            // Verificar número do documento (prioridade máxima)
-            if (formData.numero_documento !== originalLink) {
-              console.warn("🔴 CORREÇÃO CRÍTICA: Restaurando link original no estado");
-              setFormData(prev => ({ ...prev, numero_documento: originalLink }));
-            }
-            
-            if (numeroDocumentoRef.current && numeroDocumentoRef.current.value !== originalLink) {
-              console.warn("🔴 CORREÇÃO CRÍTICA: Restaurando link original no DOM");
-              numeroDocumentoRef.current.value = originalLink;
-              try {
-                const evento = new Event('input', { bubbles: true });
-                numeroDocumentoRef.current.dispatchEvent(evento);
-              } catch (e) {/* Ignorar erro */}
-            }
-          }, 500);
-          
+          // Notificar sucesso com toast
           toast.success("Dados extraídos com sucesso!");
+          
+          // Liberar processamento
+          setIsProcessingQrCode(false);
         })
         .catch((error) => {
-          // Limpar timeout pois a resposta (com erro) chegou
+          // Limpar timeout em caso de erro
           clearTimeout(extractionTimeoutId);
-          
           console.error("❌ Erro ao extrair dados:", error);
           
           // Esconder modal de carregamento
           setIsExtracting(false);
           
-          // MESMO COM ERRO: Garantir que o número do documento é o link original
-          setFormData(prev => ({ 
-            ...prev, 
+          // Garantir que pelo menos o número do documento está preenchido
+          setFormData(prev => ({
+            ...prev,
             numero_documento: originalLink,
-            valor: '0,00',
-            data_emissao: new Date().toISOString().split('T')[0]
           }));
           
-          // Atualizar DOM para o número do documento
-          if (numeroDocumentoRef.current) {
-            numeroDocumentoRef.current.value = originalLink;
-            try {
-              const evento = new Event('input', { bubbles: true });
-              numeroDocumentoRef.current.dispatchEvent(evento);
-            } catch (e) {/* Ignorar erro */}
-          }
+          if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
           
-          toast.error("Não foi possível extrair todos os dados. Verifique manualmente os valores.");
-        })
-        .finally(() => {
-          // Verificação final para garantir sempre o link original
-          if (formData.numero_documento !== originalLink) {
-            setFormData(prev => ({ ...prev, numero_documento: originalLink }));
-            
-            if (numeroDocumentoRef.current) {
-              numeroDocumentoRef.current.value = originalLink;
-            }
-          }
+          // Mostrar erro ao usuário
+          toast.error("Erro ao extrair dados do QR code. Tente novamente ou preencha manualmente.");
           
+          // Liberar processamento
           setIsProcessingQrCode(false);
         });
     } catch (error) {
-      console.error("❌ Erro geral ao processar QR code:", error);
-      setIsProcessingQrCode(false);
+      console.error("❌ Erro ao processar QR code:", error);
       setIsExtracting(false);
-      toast.error("Ocorreu um erro ao processar o QR code");
+      setIsProcessingQrCode(false);
+      toast.error("Erro ao processar o QR code. Tente novamente.");
     }
-  }, [formData.numero_documento, isProcessingQrCode, setFormData, setIsExtracting, setIsProcessingQrCode, setShowQrCodeScanner]);
+  }, [isProcessingQrCode]);
+
+  // Função auxiliar para formatar data para o input do formulário
+  const formatarDataParaInput = (dataString?: string): string => {
+    if (!dataString) return new Date().toISOString().split('T')[0];
+    
+    try {
+      // Se estiver no formato brasileiro DD/MM/YYYY
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataString)) {
+        const [dia, mes, ano] = dataString.split('/');
+        return `${ano}-${mes}-${dia}`;
+      }
+      
+      // Se já estiver no formato YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dataString)) {
+        return dataString;
+      }
+      
+      // Fallback para data atual
+      return new Date().toISOString().split('T')[0];
+    } catch (e) {
+      console.error("Erro ao formatar data:", e);
+      return new Date().toISOString().split('T')[0];
+    }
+  };
+
+  // Função auxiliar para atualizar os elementos do DOM diretamente
+  const updateFormElementsDirect = (numeroDocumento: string, valor?: string, dataEmissao?: string) => {
+    // Atualizar campo de número do documento
+    if (numeroDocumentoRef.current) {
+      numeroDocumentoRef.current.value = numeroDocumento;
+      dispatchInputEvent(numeroDocumentoRef.current);
+    }
+    
+    // Atualizar campo de valor se disponível
+    if (valor && valorRef.current) {
+      valorRef.current.value = valor;
+      dispatchInputEvent(valorRef.current);
+    }
+    
+    // Atualizar campo de data se disponível
+    if (dataEmissao && dataEmissaoRef.current) {
+      const dataFormatada = formatarDataParaInput(dataEmissao);
+      dataEmissaoRef.current.value = dataFormatada;
+      dispatchInputEvent(dataEmissaoRef.current);
+    }
+  };
+
+  // Função auxiliar para disparar evento de input
+  const dispatchInputEvent = (element: HTMLInputElement) => {
+    try {
+      const evento = new Event('input', { bubbles: true });
+      element.dispatchEvent(evento);
+    } catch (e) {
+      console.error("Erro ao disparar evento input:", e);
+    }
+  };
+
+  // Modificação na função de abertura do scanner para ser mais rápida
+  const handleOpenQrScanner = async () => {
+    // Verificar se o navegador suporta API de câmera
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error('Seu navegador não suporta acesso à câmera');
+      return;
+    }
+
+    try {
+      // Reset dos estados antes de abrir o scanner
+      setIsProcessingQrCode(false);
+      
+      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
+      setExtractionMessage('Preparando câmera para leitura do QR code...');
+      setIsExtracting(true);
+      
+      // Otimização: verificar permissão de câmera em background com timeout curto
+      const permissionPromise = navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      }).then(stream => {
+        // Fechar stream imediatamente após verificar permissão
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      }).catch(() => {
+        return false;
+      });
+      
+      // Definir timeout mais curto para verificação de permissão (1s)
+      const permissionTimeout = new Promise<boolean>(resolve => {
+        setTimeout(() => resolve(false), 1000);
+      });
+      
+      // Tentar obter permissão com timeout
+      const hasPermission = await Promise.race([permissionPromise, permissionTimeout]);
+      
+      // Mostrar scanner independente do resultado da permissão (o próprio componente lidará com erros)
+      // Isso elimina o atraso de verificação de permissão
+      setIsExtracting(false);
+      setCameraPermission(hasPermission);
+      setShowQrCodeScanner(true);
+      
+    } catch (error) {
+      console.error('Erro ao acessar câmera:', error);
+      setIsExtracting(false);
+      setCameraPermission(false);
+      toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
+    }
+  };
 
   // Função para lidar com erros no scanner
   const handleScannerError = useCallback((error: any) => {

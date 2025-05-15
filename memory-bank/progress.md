@@ -9,6 +9,7 @@
 - Sistema de navegação via dashboards clicáveis no Painel do Contribuinte.
 - Funcionalidade de filtro de documentos/cupons na página "Meus Documentos".
 - Compatibilidade com Next.js 15 através da implementação de Suspense boundaries.
+- Otimização do scanner de QR code para processamento mais rápido e confiável.
 
 ## O que falta construir/corrigir
 - Adicionar testes automatizados para o fluxo de leitura de QR codes
@@ -26,6 +27,11 @@
 - Dashboards do Painel do Contribuinte transformados em elementos interativos com navegação para grid filtrada
 - Sistema de filtragem implementado na página "Meus Documentos" com indicadores visuais e opção de remoção de filtro
 - Componentes reestruturados com Suspense boundaries para compatibilidade com o hook useSearchParams() no Next.js 15
+- Scanner de QR code otimizado com:
+  - Processamento paralelo para extração de dados
+  - Timeouts reduzidos e adaptáveis
+  - Sistema de recuperação após falhas
+  - Feedback visual aprimorado
 
 ## Issues Conhecidas
 - O scanner de QR code estava lendo corretamente o código, mas o preenchimento dos campos não funcionava corretamente:
@@ -37,6 +43,7 @@
   3. Possível problema de cache ou estado persistente
 - A nova implementação aborda esses problemas utilizando uma abordagem híbrida que não depende apenas do fluxo padrão do React
 - No Next.js 15, o uso de useSearchParams() sem um Suspense boundary causa erros de renderização durante a build
+- A leitura de QR code poderia demorar muito tempo ou, às vezes, falhar completamente - agora otimizada com timeout mais curto e processamento paralelo
 
 ## Estratégia de Resolução
 1. **Abordagem Híbrida**: Combinação de manipulação direta do DOM e gerenciamento de estado React
@@ -47,6 +54,9 @@
 6. **Navegação Intuitiva**: Transformação de dashboards informativos em elementos interativos de navegação
 7. **Filtragem Eficiente**: Implementação de sistema de filtragem com feedback visual claro para o usuário
 8. **Arquitetura Componentes**: Separação clara de responsabilidades com Suspense boundaries para recursos como useSearchParams()
+9. **Processamento Paralelo**: Execução simultânea de diferentes métodos de extração para reduzir o tempo total
+10. **Timeouts Adaptativos**: Limites de tempo otimizados para cada operação em vez de um timeout global longo
+11. **Recuperação Proativa**: Sistema que oferece novas tentativas em caso de falha na leitura ou extração
 
 ## Próximos Passos
 - Monitorar o comportamento da solução em produção

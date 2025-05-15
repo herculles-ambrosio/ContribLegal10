@@ -9,7 +9,11 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 
 3. **Extração precisa da data de emissão** para o campo "Data de Emissão" no formato brasileiro (dd/mm/aaaa) - foram adicionados padrões mais abrangentes de reconhecimento de datas.
 
-4. **Redução significativa do tempo de processamento** - foram implementados timeouts mais curtos e processamento paralelo para evitar esperas longas.
+4. **Redução significativa do tempo de processamento** - implementação de processamento paralelo e otimização de timeouts para resposta mais rápida ao usuário:
+   - Redução do timeout principal de 60s para 15s na extração de dados
+   - Execução simultânea de extração direta e chamada de API para economizar tempo
+   - Implementação de limites de tempo mais curtos em cada etapa do processo
+   - Retorno antecipado com dados parciais em casos de timeout
 
 5. **Navegação intuitiva no Painel do Contribuinte** - implementação de dashboards clicáveis que permitem acesso direto à grid de visualização de cupons com filtros específicos:
    - Dashboard "Total de Cupons" - redireciona para a lista completa de cupons
@@ -19,7 +23,29 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
    - Reestruturação do componente de listagem de documentos para seguir as melhores práticas do Next.js 15
    - Implementação de componente de carregamento apropriado enquanto os parâmetros da URL são processados
 
+7. **Otimização do scanner de QR code** - melhorias significativas na velocidade e confiabilidade da leitura de QR code:
+   - Verificação de permissão de câmera com timeout para evitar bloqueios
+   - Processamento paralelo para extrair dados mais rapidamente
+   - Redução do timeout de processamento de 20s para 10s
+   - Feedback visual aprimorado durante cada etapa do processamento
+   - Mecanismo de recuperação que sugere nova tentativa em caso de falha
+   - Funções auxiliares otimizadas para atualização consistente da interface
+
 ## Mudanças Recentes
+
+### Otimização do Serviço de Extração (fiscalReceiptService.ts)
+- Redução de timeout de 60s para 15s para melhorar experiência do usuário
+- Implementação de processamento paralelo para extração direta do link e chamada da API
+- Otimização do pré-processamento para retornar mais rapidamente com resultados parciais
+- Redução de logs de depuração para melhorar a performance
+- Novas funções auxiliares para formatação consistente de valores e datas
+
+### Melhorias no Componente de Cadastro (page.tsx)
+- Redução do timeout de processamento do QR code de 20s para 10s
+- Implementação de feedback visual mais responsivo durante o processo
+- Otimização da verificação de permissão de câmera para iniciar mais rapidamente
+- Funções auxiliares para atualização consistente dos elementos do formulário
+- Sistema de recuperação que oferece reinício rápido do scanner após falhas
 
 ### Correção do Erro de Rendering no Next.js 15 (page.tsx)
 - Implementação de Suspense boundary para o componente que utiliza useSearchParams()
@@ -44,7 +70,7 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 - Verificações de redundância para garantir a preservação do link original
 
 ### Processamento de QR Code (page.tsx)
-- Implementação de timeouts mais curtos (20 segundos máximo)
+- Implementação de timeouts mais curtos e adaptáveis
 - Feedback visual para o usuário durante o processo de extração
 - Múltiplas verificações para garantir a preservação do link original
 - Atualização direta do DOM para garantir consistência visual
