@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -32,7 +32,33 @@ type Documento = {
 // Logo do Contribuinte Legal em base64 - versão simplificada para o PDF
 const logoBase64 = 'data:image/jpeg;base64,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';
 
+// Componente principal envolvido com Suspense
 export default function MeusDocumentos() {
+  return (
+    <Suspense fallback={<CarregandoDocumentos />}>
+      <ConteudoDocumentos />
+    </Suspense>
+  );
+}
+
+// Componente de carregamento
+function CarregandoDocumentos() {
+  return (
+    <Layout isAuthenticated>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-blue-700">Meus Documentos</h1>
+        </div>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+// Componente principal com a lógica
+function ConteudoDocumentos() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);

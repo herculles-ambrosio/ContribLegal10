@@ -118,7 +118,7 @@ export default function PainelContribuinte() {
       // Calcular estatísticas
       if (documentos && documentos.length > 0) {
         // Documentos recentes
-        setDocumentosRecentes(documentos.slice(0, 3));
+        setDocumentosRecentes(documentos.slice(0, 3) as Documento[]);
         
         // Total de documentos
         const totalDocumentos = documentos.length;
