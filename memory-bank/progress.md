@@ -10,6 +10,7 @@
 - Funcionalidade de filtro de documentos/cupons na página "Meus Documentos".
 - Compatibilidade com Next.js 15 através da implementação de Suspense boundaries.
 - Otimização do scanner de QR code para processamento mais rápido e confiável.
+- Sistema de logout automático por inatividade após 3 minutos.
 
 ## O que falta construir/corrigir
 - Adicionar testes automatizados para o fluxo de leitura de QR codes
@@ -32,6 +33,11 @@
   - Timeouts reduzidos e adaptáveis
   - Sistema de recuperação após falhas
   - Feedback visual aprimorado
+- Sistema de logout automático por inatividade implementado:
+  - Detecção de inatividade após 3 minutos sem interação
+  - Hook personalizado useIdleTimer para monitoramento de eventos
+  - Aplicação automática apenas em rotas autenticadas através do AuthPageWrapper
+  - Feedback visual ao usuário sobre o encerramento da sessão
 
 ## Issues Conhecidas
 - O scanner de QR code estava lendo corretamente o código, mas o preenchimento dos campos não funcionava corretamente:

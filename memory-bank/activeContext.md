@@ -31,7 +31,21 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
    - Mecanismo de recuperação que sugere nova tentativa em caso de falha
    - Funções auxiliares otimizadas para atualização consistente da interface
 
+8. **Implementação de logout automático por inatividade** - segurança aprimorada para contas de usuários:
+   - Detecção de inatividade após 3 minutos sem interação do usuário
+   - Logout automático e redirecionamento para a página de login
+   - Aplicação apenas em rotas protegidas/autenticadas
+   - Monitoramento de diversos tipos de eventos de usuário para detecção precisa de atividade
+
 ## Mudanças Recentes
+
+### Implementação de Logout Automático por Inatividade
+- Criação de hook personalizado `useIdleTimer` para monitorar atividade do usuário
+- Implementação de `IdleTimerProvider` para aplicar o timer de inatividade globalmente
+- Criação de `AuthPageWrapper` para aplicar o timer apenas em páginas autenticadas
+- Configuração de timeout de 3 minutos para logout automático
+- Monitoramento de eventos como cliques, teclas e movimentos do mouse
+- Feedback visual com mensagem de toast ao realizar logout por inatividade
 
 ### Otimização do Serviço de Extração (fiscalReceiptService.ts)
 - Redução de timeout de 60s para 15s para melhorar experiência do usuário
