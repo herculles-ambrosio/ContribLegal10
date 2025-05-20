@@ -223,8 +223,37 @@ export default function PainelContribuinte() {
   };
 
   const formatarData = (dataISO: string) => {
-    const data = new Date(dataISO);
-    return data.toLocaleDateString('pt-BR');
+    try {
+      if (!dataISO) return '';
+      
+      // Se a data vier em formato ISO, vamos preservar o dia exato
+      if (dataISO.includes('T')) {
+        const [dataParte] = dataISO.split('T');
+        const [ano, mes, dia] = dataParte.split('-').map(num => parseInt(num, 10));
+        if (ano && mes && dia) {
+          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+        }
+      }
+      
+      // Se for apenas data (YYYY-MM-DD), dividimos e montamos diretamente
+      if (dataISO.includes('-') && dataISO.split('-').length === 3) {
+        const [ano, mes, dia] = dataISO.split('-').map(num => parseInt(num, 10));
+        if (ano && mes && dia) {
+          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+        }
+      }
+      
+      // Caso já esteja no formato DD/MM/YYYY
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dataISO)) {
+        return dataISO;
+      }
+      
+      // Fallback para o método padrão (que pode ter o problema de timezone)
+      return new Date(dataISO).toLocaleDateString('pt-BR');
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, dataISO);
+      return dataISO; // Retornar a string original em caso de erro
+    }
   };
 
   const navigateToDocuments = (filter?: string) => {

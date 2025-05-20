@@ -619,6 +619,36 @@ export default function DocumentosAdmin() {
     return tiposDocumento[tipo] || tipo;
   };
   
+  // Função auxiliar para formatar data corretamente preservando o dia
+  const formatarDataSemTimezone = (dataString: string) => {
+    try {
+      if (!dataString) return '';
+      
+      // Se a data vier em formato ISO, vamos preservar o dia exato
+      if (dataString.includes('T')) {
+        const [dataParte] = dataString.split('T');
+        const [ano, mes, dia] = dataParte.split('-').map(num => parseInt(num, 10));
+        if (ano && mes && dia) {
+          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+        }
+      }
+      
+      // Se for apenas data (YYYY-MM-DD), dividimos e montamos diretamente
+      if (dataString.includes('-') && dataString.split('-').length === 3) {
+        const [ano, mes, dia] = dataString.split('-').map(num => parseInt(num, 10));
+        if (ano && mes && dia) {
+          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+        }
+      }
+      
+      // Fallback para o método padrão (que pode ter o problema de timezone)
+      return new Date(dataString).toLocaleDateString('pt-BR');
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, dataString);
+      return dataString; // Retornar a string original em caso de erro
+    }
+  };
+  
   // Visualizar documento
   const visualizarDocumento = async (id: string, documento: DocumentoComUsuario) => {
     try {
@@ -983,9 +1013,7 @@ export default function DocumentosAdmin() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {documento.data_emissao 
-                              ? new Date(documento.data_emissao).toLocaleDateString('pt-BR')
-                              : new Date(documento.created_at).toLocaleDateString('pt-BR')}
+                            {formatarDataSemTimezone(documento.data_emissao || documento.created_at)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

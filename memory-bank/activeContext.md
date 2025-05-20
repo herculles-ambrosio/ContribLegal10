@@ -106,3 +106,69 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 - Implementar mecanismos de feedback para que usuários possam reportar problemas específicos 
 - Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor
 - Implementar testes automatizados para garantir compatibilidade com futuras atualizações do framework 
+
+# Contexto Ativo
+
+## Foco Atual
+Estamos trabalhando na estabilização e melhoria contínua da plataforma Contribuinte Legal, focando especialmente na experiência do usuário e na consistência dos dados em todas as telas do sistema.
+
+As principais áreas de trabalho incluem:
+
+1. **Correção e otimização do scanner de QR code para NFe e Cupons Fiscais**
+   - Correção do problema de extração parcial do número do documento
+   - Melhoria na extração e apresentação de valores monetários
+   - Aprimoramento da extração e formatação de datas
+
+2. **Melhoria da navegação e usabilidade**
+   - Implementação de dashboards interativos no Painel do Contribuinte
+   - Adição de sistema de filtros na visualação de documentos
+   - Correção de problemas de exibição de datas em todas as telas do sistema
+
+3. **Compatibilidade com Next.js 15**
+   - Implementação de Suspense boundaries para componentes com hooks específicos
+   - Solução para problemas de renderização durante build
+
+## Mudanças Recentes
+
+### Últimas Implementações
+- Sistema de logout automático por inatividade
+- Otimização do scanner de QR code para processamento mais rápido e confiável
+- Correção do problema de timezone na exibição de datas em todas as telas
+- Implementação de função `formatarDataSemTimezone` para garantir consistência entre a data gravada e a exibida
+
+### Problemas Resolvidos
+- Extração parcial de números de documentos durante leitura do QR code
+- Incompatibilidade com Next.js 15 ao usar hooks específicos
+- Inconsistência na exibição de datas, onde datas cadastradas apareciam como sendo do dia anterior nas telas de listagem
+
+## Decisões Técnicas Ativas
+
+1. **Abordagem Híbrida React + DOM**
+   - Manutenção da manipulação direta do DOM para casos específicos
+   - Combinação com gerenciamento de estado React para maior robustez
+
+2. **Manipulação Manual de Datas**
+   - Implementação de funções personalizadas para formatação de datas
+   - Evitar conversões automáticas que podem causar problemas de timezone
+   - Utilização de manipulação direta de strings de data em formatos específicos
+
+3. **Suspense e Erro Boundaries**
+   - Encapsulamento de componentes que usam hooks específicos do Next.js 15
+   - Fallbacks adequados para cada tipo de componente
+
+## Próximos Passos
+
+1. **Curto Prazo**
+   - Monitoramento da performance do scanner em diferentes ambientes
+   - Verificação da consistência nas exibições de datas em todas as partes do sistema
+   - Validação da experiência do usuário nas diferentes telas e fluxos
+
+2. **Médio Prazo**
+   - Expansão do sistema de filtros para incluir mais opções de filtros específicos
+   - Implementação de testes automatizados para casos críticos
+   - Refinamento da UI/UX em dispositivos móveis
+
+3. **Longo Prazo**
+   - Considerar uma reescrita mais limpa dos componentes críticos
+   - Implementar sistema de análise de dados para operadores
+   - Expandir funcionalidades de geração de números da sorte 

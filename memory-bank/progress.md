@@ -11,6 +11,7 @@
 - Compatibilidade com Next.js 15 através da implementação de Suspense boundaries.
 - Otimização do scanner de QR code para processamento mais rápido e confiável.
 - Sistema de logout automático por inatividade após 3 minutos.
+- Correção do problema de fuso horário na exibição de datas em todas as telas do sistema.
 
 ## O que falta construir/corrigir
 - Adicionar testes automatizados para o fluxo de leitura de QR codes
@@ -38,6 +39,11 @@
   - Hook personalizado useIdleTimer para monitoramento de eventos
   - Aplicação automática apenas em rotas autenticadas através do AuthPageWrapper
   - Feedback visual ao usuário sobre o encerramento da sessão
+- Correção da exibição de datas em todo o sistema:
+  - Implementação de função `formatarDataSemTimezone` que preserva a data original
+  - Manipulação direta de strings de data para evitar problemas de timezone
+  - Aplicação da solução em todas as telas que exibem datas (Meus Documentos, Admin, Contribuinte)
+  - Garantia de consistência entre a data gravada no banco e a data exibida ao usuário
 
 ## Issues Conhecidas
 - O scanner de QR code estava lendo corretamente o código, mas o preenchimento dos campos não funcionava corretamente:
@@ -50,6 +56,7 @@
 - A nova implementação aborda esses problemas utilizando uma abordagem híbrida que não depende apenas do fluxo padrão do React
 - No Next.js 15, o uso de useSearchParams() sem um Suspense boundary causa erros de renderização durante a build
 - A leitura de QR code poderia demorar muito tempo ou, às vezes, falhar completamente - agora otimizada com timeout mais curto e processamento paralelo
+- Problema de timezone nas datas: datas cadastradas apareciam como sendo do dia anterior nas telas de visualização - corrigido com manipulação direta de strings de data
 
 ## Estratégia de Resolução
 1. **Abordagem Híbrida**: Combinação de manipulação direta do DOM e gerenciamento de estado React
@@ -63,6 +70,7 @@
 9. **Processamento Paralelo**: Execução simultânea de diferentes métodos de extração para reduzir o tempo total
 10. **Timeouts Adaptativos**: Limites de tempo otimizados para cada operação em vez de um timeout global longo
 11. **Recuperação Proativa**: Sistema que oferece novas tentativas em caso de falha na leitura ou extração
+12. **Preservação de Data**: Implementação de funções para manipular diretamente strings de data, evitando conversões automáticas que podem causar mudanças de fuso horário
 
 ## Próximos Passos
 - Monitorar o comportamento da solução em produção

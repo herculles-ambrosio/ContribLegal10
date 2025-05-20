@@ -13,7 +13,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getUsuarioLogado } from '@/lib/auth';
 import Image from 'next/image';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 type Documento = {
   id: string;
@@ -317,6 +317,28 @@ function ConteudoDocumentos() {
     router.push('/meus-documentos/cadastrar');
   };
 
+  // Função auxiliar para formatar data corretamente preservando o dia
+  const formatarDataSemTimezone = (dataString: string) => {
+    try {
+      // Se a data vier em formato ISO, vamos preservar o dia exato
+      if (dataString.includes('T')) {
+        return format(parseISO(dataString), 'dd/MM/yyyy');
+      }
+      
+      // Se for apenas data (YYYY-MM-DD), dividimos e montamos diretamente
+      const [ano, mes, dia] = dataString.split('-').map(num => parseInt(num, 10));
+      if (ano && mes && dia) {
+        return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+      }
+      
+      // Fallback para o método padrão (que pode ter o problema de timezone)
+      return format(new Date(dataString), 'dd/MM/yyyy');
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, dataString);
+      return dataString; // Retornar a string original em caso de erro
+    }
+  };
+
   return (
     <Layout isAuthenticated>
       <div className="container mx-auto px-4 py-8">
@@ -428,7 +450,7 @@ function ConteudoDocumentos() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{format(new Date(documento.data_emissao), 'dd/MM/yyyy')}</div>
+                        <div className="text-sm text-gray-900">{formatarDataSemTimezone(documento.data_emissao)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
