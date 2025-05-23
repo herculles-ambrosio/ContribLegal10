@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import Webcam from 'react-webcam';
 import Button from '@/components/ui/Button';
 import { FaCamera, FaRedo, FaTimesCircle } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
@@ -13,149 +14,95 @@ interface QrCodeScannerProps {
 const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose }) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [isFrontCamera, setIsFrontCamera] = useState(false);
   
-  // Função para inicializar a câmera
-  const initCamera = async () => {
-    try {
-      console.log('Iniciando câmera...');
-      setIsInitializing(true);
-      setCameraError(null);
-      
-      // Limpar recursos anteriores
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('Seu navegador não suporta acesso à câmera.');
-        setIsInitializing(false);
-        return;
-      }
-      
-      // Solicitar acesso à câmera com configuração simples
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false
-      });
-      
-      if (!videoRef.current) {
-        console.error('Elemento de vídeo não encontrado');
-        setCameraError('Erro ao inicializar componente de vídeo.');
-        setIsInitializing(false);
-        return;
-      }
-      
-      // Salvar referência ao stream
-      streamRef.current = stream;
-      
-      // Configurar o vídeo
-      const video = videoRef.current;
-      video.srcObject = stream;
-      video.setAttribute('playsinline', 'true'); // Importante para iOS
-      video.muted = true;
-      
-      // Aguardar carregamento do vídeo
-      await video.play();
-      
-      setIsInitializing(false);
-      console.log('Câmera inicializada com sucesso!');
-      
-      // Simular leitura de QR code para teste
-      // (deve ser removido na versão de produção)
-      setTimeout(() => {
-        toast.success('QR Code encontrado (simulação)!');
-        handleClose();
+  // Referência para o componente Webcam
+  const webcamRef = useRef<Webcam>(null);
+  
+  // Configurações da webcam para melhorar a compatibilidade mobile
+  const videoConstraints = {
+    width: 1280,
+    height: 720,
+    facingMode: isFrontCamera ? "user" : "environment",
+  };
+  
+  // Função chamada quando a câmera é inicializada com sucesso
+  const handleUserMedia = () => {
+    console.log('Câmera inicializada com sucesso!');
+    setIsInitializing(false);
+    setCameraError(null);
+    
+    // Simulação de leitura de QR code após 5 segundos
+    setTimeout(() => {
+      toast.success('QR Code encontrado (simulação)!');
+      if (onScanSuccess) {
         onScanSuccess('TESTE_QR_CODE_12345');
-      }, 5000);
-      
-    } catch (error) {
-      console.error('Erro ao inicializar câmera:', error);
-      let message = 'Erro ao acessar câmera. ';
-      
-      if (String(error).includes('NotAllowedError')) {
-        message = 'Acesso à câmera negado. Verifique as permissões do navegador.';
-      } else if (String(error).includes('NotFoundError')) {
-        message = 'Nenhuma câmera encontrada neste dispositivo.';
-      } else if (String(error).includes('NotReadableError')) {
-        message = 'Câmera em uso por outro aplicativo ou não pode ser acessada.';
       }
       
-      setCameraError(message);
-      setIsInitializing(false);
-    }
-  };
-  
-  // Trocar para câmera frontal/traseira
-  const switchCamera = async () => {
-    if (!streamRef.current) return;
-    
-    // Obter o modo atual
-    const currentFacingMode = streamRef.current.getVideoTracks()[0].getSettings().facingMode;
-    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-    
-    // Parar o stream atual
-    streamRef.current.getTracks().forEach(track => track.stop());
-    
-    try {
-      // Solicitar novo stream com a outra câmera
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: newFacingMode },
-        audio: false
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-        streamRef.current = newStream;
-        await videoRef.current.play();
-        
-        toast.success('Câmera alternada com sucesso');
+      if (onClose) {
+        onClose();
       }
-    } catch (error) {
-      console.error('Erro ao trocar câmera:', error);
-      toast.error('Não foi possível trocar para a outra câmera');
-    }
+    }, 5000);
   };
   
-  // Reiniciar câmera em caso de erro
-  const restartCamera = () => {
-    initCamera();
+  // Função chamada quando ocorre um erro na inicialização da câmera
+  const handleUserMediaError = (error: string | DOMException) => {
+    console.error('Erro ao acessar câmera:', error);
+    setIsInitializing(false);
+    
+    let errorMessage = 'Erro ao acessar a câmera. Verifique as permissões.';
+    
+    if (error instanceof DOMException) {
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Permissão para acessar a câmera foi negada. Verifique as configurações do seu navegador.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'Nenhuma câmera foi encontrada neste dispositivo.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'A câmera está sendo usada por outro aplicativo.';
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'As configurações solicitadas para a câmera não são suportadas.';
+      }
+    }
+    
+    setCameraError(errorMessage);
+    toast.error(errorMessage);
   };
   
-  // Limpar recursos ao fechar
-  const handleClose = () => {
-    console.log('Fechando câmera...');
+  // Trocar entre câmera frontal e traseira
+  const switchCamera = useCallback(() => {
+    setIsFrontCamera(prev => !prev);
+  }, []);
+  
+  // Reiniciar a câmera
+  const restartCamera = useCallback(() => {
+    setIsInitializing(true);
+    setCameraError(null);
     
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        console.log('Parando track de vídeo');
-        track.stop();
-      });
-      streamRef.current = null;
-    }
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    
+    // A reinicialização ocorre automaticamente pela mudança de estado
+    setTimeout(() => {
+      if (webcamRef.current) {
+        const video = webcamRef.current.video;
+        if (video) {
+          video.play().catch(e => {
+            console.error('Erro ao reiniciar vídeo:', e);
+            setCameraError('Falha ao reiniciar a câmera.');
+          });
+        }
+      }
+    }, 500);
+  }, []);
+  
+  // Fechar o scanner
+  const handleClose = useCallback(() => {
     if (onClose) {
       onClose();
     }
-  };
+  }, [onClose]);
   
-  // Inicializar câmera ao montar o componente
+  // Detectar quando o componente é desmontado
   useEffect(() => {
-    // Pequeno atraso antes de iniciar a câmera
-    const timer = setTimeout(() => {
-      initCamera();
-    }, 500);
-    
-    // Limpar recursos ao desmontar
     return () => {
-      clearTimeout(timer);
-      handleClose();
+      console.log('Componente QrCodeScanner desmontado');
     };
   }, []);
   
@@ -173,12 +120,18 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
       </div>
       
       <div className="w-full h-80 relative bg-gray-100 rounded-md overflow-hidden mb-4">
-        {/* Elemento de vídeo para exibir a câmera */}
-        <video 
-          ref={videoRef}
+        {/* Componente Webcam para acesso à câmera */}
+        <Webcam
+          ref={webcamRef}
+          audio={false}
+          screenshotFormat="image/jpeg"
+          videoConstraints={videoConstraints}
+          onUserMedia={handleUserMedia}
+          onUserMediaError={handleUserMediaError}
           className="w-full h-full object-cover"
-          playsInline
-          muted
+          mirrored={isFrontCamera}
+          width="100%"
+          height="100%"
         />
         
         {/* Overlay de erro */}
@@ -235,6 +188,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
       <div className="text-xs text-gray-400 text-center mt-4">
         <p>Posicione o QR code do cupom fiscal dentro da área de leitura.</p>
         <p className="mt-1">Certifique-se de que há boa iluminação e que o QR code está visível por completo.</p>
+        <p className="mt-1">Aviso: Esta é uma versão de teste que simula a leitura de QR code após 5 segundos.</p>
       </div>
     </div>
   );
