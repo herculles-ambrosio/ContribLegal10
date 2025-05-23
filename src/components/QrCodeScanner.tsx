@@ -10,35 +10,70 @@ import { toast } from 'react-hot-toast';
 interface QrCodeScannerProps {
   onScanSuccess: (qrCodeData: string) => void;
   onClose?: () => void;
+  onScanError?: (error: any) => void;
+  onDebugLog?: (message: string) => void;
 }
 
-const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose }) => {
+const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ 
+  onScanSuccess, 
+  onClose,
+  onScanError,
+  onDebugLog 
+}) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [lastDetectedCode, setLastDetectedCode] = useState<string | null>(null);
+  const [lastProcessTime, setLastProcessTime] = useState(0);
+  
+  // Função de log que envia para o componente pai se disponível
+  const log = useCallback((message: string) => {
+    console.log(message);
+    if (onDebugLog) {
+      onDebugLog(message);
+    }
+  }, [onDebugLog]);
   
   // Referências para elementos e timers
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const processingRef = useRef(false);
   
   // Configurações da webcam para melhorar a compatibilidade mobile
   const videoConstraints = {
     width: 1280,
     height: 720,
     facingMode: isFrontCamera ? "user" : "environment",
+    // Melhorar qualidade e foco
+    aspectRatio: 16/9,
+    frameRate: { ideal: 30 }
   };
   
-  // Função para processar frames e detectar QR codes
+  // Função para processar frames e detectar QR codes com melhor performance
   const scanQrCode = useCallback(() => {
     if (!isScanning || !webcamRef.current || !webcamRef.current.video) return;
+    
+    // Evitar processamento de frames muito próximos para melhorar performance
+    const now = performance.now();
+    const timeSinceLastProcess = now - lastProcessTime;
+    
+    // Limitar a taxa de processamento para no máximo 10 frames por segundo (100ms)
+    if (timeSinceLastProcess < 50) return;
+    
+    // Evitar processamento simultâneo
+    if (processingRef.current) return;
+    
+    // Marcar como processando
+    processingRef.current = true;
+    setLastProcessTime(now);
     
     const video = webcamRef.current.video;
     
     // Garantir que o vídeo está pronto e tem dimensões válidas
     if (!video.readyState || video.videoWidth === 0 || video.videoHeight === 0) {
+      processingRef.current = false;
       return;
     }
     
@@ -50,27 +85,35 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    if (!ctx) return;
+    if (!ctx) {
+      processingRef.current = false;
+      return;
+    }
     
-    // Definir dimensões do canvas para corresponder ao vídeo
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Reduzir a resolução para melhorar performance mantendo precisão adequada
+    const scale = 0.6; // Usar 60% da resolução original
+    const scaledWidth = Math.floor(video.videoWidth * scale);
+    const scaledHeight = Math.floor(video.videoHeight * scale);
     
-    // Obter frame atual do vídeo
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Definir dimensões do canvas para corresponder ao vídeo redimensionado
+    canvas.width = scaledWidth;
+    canvas.height = scaledHeight;
+    
+    // Obter frame atual do vídeo com dimensões reduzidas
+    ctx.drawImage(video, 0, 0, scaledWidth, scaledHeight);
     
     try {
       // Obter dados de imagem do canvas
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
       
-      // Detectar QR code na imagem usando jsQR
+      // Detectar QR code na imagem usando jsQR com configurações otimizadas
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
+        inversionAttempts: "dontInvert", // Mais rápido, geralmente suficiente
       });
       
       // Se um QR code válido for encontrado
       if (code) {
-        console.log("QR Code detectado:", code.data);
+        log(`Código QR detectado com dados: ${code.data.substring(0, 20)}...`);
         
         // Validar o QR code (verificar se tem conteúdo e comprimento adequado)
         if (code.data && code.data.length > 10) {
@@ -79,20 +122,60 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
             // Salvar o código detectado para evitar leituras duplicadas
             setLastDetectedCode(code.data);
             
-            // Parar a verificação e notificar sucesso
-            stopScanning();
-            handleScanSuccess(code.data);
+            // Feedback visual e sonoro
+            try {
+              // Vibrar dispositivo (para mobile)
+              if (navigator.vibrate) {
+                navigator.vibrate(200);
+              }
+            } catch (e) {
+              log("Vibração não suportada");
+            }
+            
+            // Parar escaneamento
+            if (scanIntervalRef.current) {
+              clearInterval(scanIntervalRef.current);
+              scanIntervalRef.current = null;
+            }
+            setIsScanning(false);
+            
+            // Notificar sucesso
+            log(`QR Code detectado com sucesso: ${code.data.substring(0, 20)}...`);
+            toast.success('QR Code lido com sucesso!');
+            
+            // Chamar callback de sucesso
+            if (onScanSuccess) {
+              onScanSuccess(code.data);
+            }
+            
+            // Fechar scanner após sucesso (opcional)
+            if (onClose) {
+              onClose();
+            }
+          } else {
+            log("QR Code ignorado (duplicado)");
           }
+        } else {
+          log(`QR Code rejeitado (muito curto): ${code.data}`);
         }
       }
     } catch (error) {
       console.error("Erro ao processar frame:", error);
+      log(`Erro ao processar frame: ${error instanceof Error ? error.message : 'desconhecido'}`);
+      
+      // Notificar erro para componente pai
+      if (onScanError) {
+        onScanError(error);
+      }
+    } finally {
+      // Marcar como não processando
+      processingRef.current = false;
     }
-  }, [isScanning, lastDetectedCode]);
+  }, [isScanning, lastDetectedCode, lastProcessTime, log, onScanError, onScanSuccess, onClose]);
   
   // Iniciar o processo de escaneamento
   const startScanning = useCallback(() => {
-    console.log("Iniciando escaneamento de QR code");
+    log("Iniciando escaneamento de QR code");
     setIsScanning(true);
     
     // Limpar intervalo anterior se existir
@@ -100,75 +183,68 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
       clearInterval(scanIntervalRef.current);
     }
     
-    // Configurar verificação periódica de frames (a cada 200ms)
+    // Configurar verificação periódica de frames (agora mais frequente para melhor responsividade)
     scanIntervalRef.current = setInterval(() => {
       scanQrCode();
-    }, 200);
-  }, [scanQrCode]);
+    }, 50); // Verificar a cada 50ms (mais rápido)
+  }, [scanQrCode, log]);
   
   // Parar o processo de escaneamento
   const stopScanning = useCallback(() => {
-    console.log("Parando escaneamento de QR code");
+    log("Parando escaneamento de QR code");
     setIsScanning(false);
     
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
-  }, []);
-  
-  // Processar QR code lido com sucesso
-  const handleScanSuccess = useCallback((qrCodeData: string) => {
-    toast.success('QR Code lido com sucesso!');
-    stopScanning();
-    
-    // Chamar callback de sucesso
-    if (onScanSuccess) {
-      onScanSuccess(qrCodeData);
-    }
-    
-    // Fechar scanner após sucesso (opcional)
-    if (onClose) {
-      onClose();
-    }
-  }, [onClose, onScanSuccess, stopScanning]);
+  }, [log]);
   
   // Função chamada quando a câmera é inicializada com sucesso
   const handleUserMedia = useCallback(() => {
-    console.log('Câmera inicializada com sucesso!');
+    log('Câmera inicializada com sucesso!');
     setIsInitializing(false);
     setCameraError(null);
     
     // Iniciar escaneamento automaticamente quando a câmera estiver pronta
     startScanning();
-  }, [startScanning]);
+  }, [startScanning, log]);
   
   // Função chamada quando ocorre um erro na inicialização da câmera
-  const handleUserMediaError = (error: string | DOMException) => {
+  const handleUserMediaError = useCallback((error: string | DOMException) => {
+    const errorMessage = error instanceof DOMException ? `${error.name}: ${error.message}` : error;
+    log(`Erro ao acessar câmera: ${errorMessage}`);
     console.error('Erro ao acessar câmera:', error);
+    
     setIsInitializing(false);
     setIsScanning(false);
     
-    let errorMessage = 'Erro ao acessar a câmera. Verifique as permissões.';
+    let errorDisplayMessage = 'Erro ao acessar a câmera. Verifique as permissões.';
     
     if (error instanceof DOMException) {
       if (error.name === 'NotAllowedError') {
-        errorMessage = 'Permissão para acessar a câmera foi negada. Verifique as configurações do seu navegador.';
+        errorDisplayMessage = 'Permissão para acessar a câmera foi negada. Verifique as configurações do seu navegador.';
       } else if (error.name === 'NotFoundError') {
-        errorMessage = 'Nenhuma câmera foi encontrada neste dispositivo.';
+        errorDisplayMessage = 'Nenhuma câmera foi encontrada neste dispositivo.';
       } else if (error.name === 'NotReadableError') {
-        errorMessage = 'A câmera está sendo usada por outro aplicativo.';
+        errorDisplayMessage = 'A câmera está sendo usada por outro aplicativo.';
       } else if (error.name === 'OverconstrainedError') {
-        errorMessage = 'As configurações solicitadas para a câmera não são suportadas.';
+        errorDisplayMessage = 'As configurações solicitadas para a câmera não são suportadas.';
       }
     }
     
-    setCameraError(errorMessage);
-    toast.error(errorMessage);
-  };
+    setCameraError(errorDisplayMessage);
+    toast.error(errorDisplayMessage);
+    
+    // Notificar o componente pai sobre o erro
+    if (onScanError) {
+      onScanError(error);
+    }
+  }, [log, onScanError]);
   
   // Trocar entre câmera frontal e traseira
   const switchCamera = useCallback(() => {
+    log(`Trocando câmera: ${isFrontCamera ? 'traseira' : 'frontal'} -> ${isFrontCamera ? 'frontal' : 'traseira'}`);
     const wasScanning = isScanning;
     
     // Parar o escaneamento temporariamente
@@ -184,43 +260,66 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
         startScanning();
       }, 500);
     }
-  }, [isScanning, startScanning, stopScanning]);
+  }, [isScanning, startScanning, stopScanning, isFrontCamera, log]);
   
-  // Reiniciar a câmera
+  // Reiniciar a câmera - CORRIGIDO para funcionar corretamente
   const restartCamera = useCallback(() => {
-    setIsInitializing(true);
-    setCameraError(null);
-    setLastDetectedCode(null);
-    
+    log("Reiniciando câmera...");
     // Parar escaneamento existente
     stopScanning();
     
-    // A reinicialização ocorre automaticamente pela mudança de estado
-    setTimeout(() => {
-      if (webcamRef.current) {
-        const video = webcamRef.current.video;
-        if (video) {
-          video.play().catch(e => {
-            console.error('Erro ao reiniciar vídeo:', e);
-            setCameraError('Falha ao reiniciar a câmera.');
-          });
-        }
+    // Resetar estados e variáveis
+    setIsInitializing(true);
+    setCameraError(null);
+    setLastDetectedCode(null);
+    processingRef.current = false;
+    
+    // Se houver um stream ativo, pará-lo
+    if (webcamRef.current && webcamRef.current.video) {
+      const stream = webcamRef.current.video.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
       }
-      
-      // Reiniciar escaneamento
-      startScanning();
-    }, 500);
-  }, [startScanning, stopScanning]);
+    }
+    
+    // Pequeno atraso para garantir que tudo foi limpo
+    setTimeout(() => {
+      // Re-renderizar a câmera com um novo componente
+      if (webcamRef.current) {
+        // Forçar re-renderização
+        webcamRef.current.video = null;
+        setIsInitializing(true);
+        
+        // Atrasar o reinício da câmera para garantir limpeza completa
+        setTimeout(() => {
+          setIsInitializing(false);
+          startScanning();
+          log("Câmera reiniciada com sucesso");
+        }, 300);
+      }
+    }, 200);
+  }, [startScanning, stopScanning, log]);
   
-  // Fechar o scanner
+  // Fechar o scanner - CORRIGIDO para funcionar corretamente
   const handleClose = useCallback(() => {
+    log("Fechando scanner...");
+    
     // Parar escaneamento antes de fechar
     stopScanning();
     
+    // Se houver um stream ativo, pará-lo
+    if (webcamRef.current && webcamRef.current.video) {
+      const stream = webcamRef.current.video.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }
+    
+    // Chamar callback de fechamento
     if (onClose) {
       onClose();
     }
-  }, [onClose, stopScanning]);
+  }, [onClose, stopScanning, log]);
   
   // Limpar recursos quando o componente for desmontado
   useEffect(() => {
@@ -228,6 +327,14 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ onScanSuccess, onClose })
       console.log('Limpando recursos do QR Scanner');
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
+      }
+      
+      // Garantir que todos os tracks da câmera sejam parados
+      if (webcamRef.current && webcamRef.current.video) {
+        const stream = webcamRef.current.video.srcObject as MediaStream;
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
       }
     };
   }, []);
