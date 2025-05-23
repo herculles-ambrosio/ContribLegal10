@@ -132,6 +132,15 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         }
       }
       
+      // Verificar se o elemento existe antes de continuar
+      const qrReaderElement = document.getElementById("qr-reader");
+      if (!qrReaderElement) {
+        log('Elemento #qr-reader não encontrado no DOM');
+        toast.error('Erro ao inicializar scanner: elemento DOM não encontrado');
+        setScanFailed(true);
+        return false;
+      }
+      
       // Configurações simplificadas, com parâmetros mais conservadores
       const config = {
         fps: 10,
@@ -162,13 +171,24 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         const html5QrCode = new Html5Qrcode("qr-reader", { verbose: false });
         scannerRef.current = html5QrCode;
         
-        // Iniciar scanner com câmera traseira
-        await html5QrCode.start(
+        // Mostrar mensagem clara
+        setMessage('Solicitando acesso à câmera...');
+        
+        // Usando uma Promise com timeout para detectar falha na inicialização da câmera
+        const cameraPromise = html5QrCode.start(
           { facingMode: "environment" },
           config,
           qrCodeSuccessCallback,
           qrCodeErrorCallback
         );
+        
+        // Promise com timeout
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Timeout ao iniciar câmera")), 8000);
+        });
+        
+        // Aguardar a primeira que completar (sucesso ou timeout)
+        await Promise.race([cameraPromise, timeoutPromise]);
         
         setIsScanning(true);
         setMessage('Aponte a câmera para o QR Code');
@@ -204,6 +224,15 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         return true;
       } catch (cameraError) {
         log(`Erro ao iniciar câmera: ${cameraError}`);
+        // Mostrar mensagem de erro mais específica para o usuário
+        if (String(cameraError).includes('Permission denied') || 
+            String(cameraError).includes('permission')) {
+          toast.error('Permissão da câmera negada. Por favor, permita o acesso.');
+        } else if (String(cameraError).includes('Timeout')) {
+          toast.error('Tempo esgotado ao iniciar câmera. Tente novamente.');
+        } else {
+          toast.error('Erro ao acessar câmera. Verifique as permissões.');
+        }
         throw cameraError;
       }
     } catch (error) {
@@ -234,14 +263,43 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       // Primeiro paramos qualquer scanner ativo
       stopScanning();
       
-      // Tentar iniciar o scanner HTML5QrCode (versão simplificada)
-      const success = await startHtml5QrScanner();
-      
-      if (success) {
-        toast.success('Câmera pronta!');
-      } else {
-        toast.error('Não foi possível iniciar o scanner');
+      // Verificar permissões de câmera antes de iniciar
+      try {
+        // Solicitação explícita de permissão com timeout
+        const permissionPromise = navigator.mediaDevices.getUserMedia({ video: true });
+        
+        // Promise com timeout para a permissão
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Tempo esgotado ao solicitar permissão de câmera')), 5000);
+        });
+        
+        // Aguardar o primeiro que completar
+        await Promise.race([permissionPromise, timeoutPromise]);
+        
+        // Tentar iniciar o scanner HTML5QrCode
+        const success = await startHtml5QrScanner();
+        
+        if (success) {
+          toast.success('Câmera pronta!');
+        } else {
+          toast.error('Não foi possível iniciar o scanner');
+          setScanFailed(true);
+        }
+      } catch (permissionError) {
+        log(`Erro de permissão de câmera: ${permissionError}`);
+        
+        // Mensagem de erro específica para permissão
+        if (String(permissionError).includes('Permission denied') || 
+            String(permissionError).includes('permission')) {
+          toast.error('Acesso à câmera negado. Por favor, permita o acesso nas configurações do navegador.');
+        } else if (String(permissionError).includes('Tempo esgotado')) {
+          toast.error('Tempo esgotado ao solicitar permissão da câmera. Verifique as configurações do navegador.');
+        } else {
+          toast.error('Erro ao acessar câmera. Verifique as configurações do navegador.');
+        }
+        
         setScanFailed(true);
+        if (onScanError) onScanError(permissionError);
       }
     } catch (error) {
       log(`Erro ao iniciar scanner: ${error}`);
@@ -265,15 +323,15 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       const newTorchState = !torchEnabled;
       
       try {
-        // @ts-ignore - As propriedades podem não estar no tipo Html5Qrcode
-        if (newTorchState && typeof scannerRef.current.turnFlashOn === 'function') {
-          // @ts-ignore
-          await scannerRef.current.turnFlashOn();
+        // Solução mais segura para acessar métodos que podem não estar no tipo
+        const scanner = scannerRef.current as any;
+        
+        if (newTorchState && typeof scanner.turnFlashOn === 'function') {
+          await scanner.turnFlashOn();
           setTorchEnabled(true);
           toast.success('Lanterna ativada');
-        } else if (!newTorchState && typeof scannerRef.current.turnFlashOff === 'function') {
-          // @ts-ignore
-          await scannerRef.current.turnFlashOff();
+        } else if (!newTorchState && typeof scanner.turnFlashOff === 'function') {
+          await scanner.turnFlashOff();
           setTorchEnabled(false);
           toast.success('Lanterna desativada');
         } else {
