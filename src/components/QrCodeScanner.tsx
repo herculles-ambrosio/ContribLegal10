@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Button from '@/components/ui/Button';
-import { FaLightbulb, FaRedo, FaCamera, FaExclamationTriangle } from 'react-icons/fa';
+import { FaLightbulb, FaRedo, FaCamera, FaExclamationTriangle, FaTimesCircle } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 
 // Estendendo interfaces nativas para suportar a propriedade torch
@@ -21,12 +21,14 @@ interface QrCodeScannerProps {
   onScanSuccess: (qrCodeData: string) => void;
   onScanError?: (error: any) => void;
   onDebugLog?: (message: string) => void;
+  onClose?: () => void;
 }
 
 const QrCodeScanner: React.FC<QrCodeScannerProps> = ({ 
   onScanSuccess, 
   onScanError,
-  onDebugLog 
+  onDebugLog,
+  onClose
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanFailed, setHasScanFailed] = useState(false);
@@ -35,6 +37,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [cameras, setCameras] = useState<{id: string, label: string}[]>([]);
   const [isIOS, setIsIOS] = useState(false);
+  const [initAttempts, setInitAttempts] = useState(0);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scanTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,7 +71,7 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       scanTimerRef.current = null;
     }
     
-    // Limpar stream de vídeo direto se estiver usando abordagem nativa
+    // Limpar stream de vídeo direto
     if (streamRef.current) {
       try {
         streamRef.current.getTracks().forEach(track => {
@@ -78,6 +81,16 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         streamRef.current = null;
       } catch (e) {
         log(`Erro ao parar stream nativo: ${e}`);
+      }
+    }
+    
+    // Limpar elemento de vídeo
+    if (videoRef.current && videoRef.current.srcObject) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+      } catch (e) {
+        log(`Erro ao limpar elemento de vídeo: ${e}`);
       }
     }
     
@@ -134,44 +147,148 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     };
   }, [cleanupScanner, log]);
   
-  // Detectar câmeras disponíveis
-  const detectCameras = useCallback(async () => {
+  // Verificar permissões de câmera
+  const checkCameraPermission = useCallback(async () => {
     try {
-      log('Detectando câmeras disponíveis...');
-      const devices = await Html5Qrcode.getCameras();
-      
-      if (devices && devices.length) {
-        const cameraList = devices.map(device => ({
-          id: device.id,
-          label: device.label || `Câmera ${device.id.substring(0, 4)}`
-        }));
-        
-        setCameras(cameraList);
-        log(`Encontradas ${cameraList.length} câmeras`);
-        
-        // Selecionar câmera traseira por padrão (se possível)
-        const rearCamera = cameraList.find(camera => 
-          camera.label.toLowerCase().includes('back') || 
-          camera.label.toLowerCase().includes('traseira') ||
-          camera.label.toLowerCase().includes('environment')
-        );
-        
-        if (rearCamera) {
-          log(`Selecionada câmera traseira: ${rearCamera.label}`);
-        } else {
-          log(`Selecionada primeira câmera: ${cameraList[0].label}`);
-        }
-        
-        return true;
-      } else {
-        log('Nenhuma câmera encontrada');
+      // Verificar se o navegador suporta a API
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log('Navegador não suporta API MediaDevices');
         return false;
       }
+      
+      // Solicitar permissão explicitamente
+      log('Solicitando permissão de câmera explicitamente...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: false 
+      });
+      
+      // Se chegar aqui, a permissão foi concedida
+      log('Permissão de câmera concedida!');
+      
+      // Liberar o stream imediatamente após o teste
+      stream.getTracks().forEach(track => track.stop());
+      
+      return true;
     } catch (error) {
-      log(`Erro ao detectar câmeras: ${error}`);
+      log(`Erro ao verificar permissão de câmera: ${error}`);
+      
+      if (String(error).includes('NotAllowedError')) {
+        log('Permissão de câmera negada pelo usuário');
+        toast.error('Você precisa permitir o acesso à câmera para utilizar o scanner');
+      } else if (String(error).includes('NotFoundError')) {
+        log('Nenhuma câmera encontrada');
+        toast.error('Nenhuma câmera foi encontrada no dispositivo');
+      } 
+      
       return false;
     }
   }, [log]);
+  
+  // Abordagem mais direta para câmera
+  const startNativeCamera = useCallback(async () => {
+    try {
+      log('Iniciando abordagem nativa com camera...');
+      setMessage('Inicializando câmera...');
+      
+      // Limpar recursos anteriores
+      cleanupScanner();
+      
+      // Verificar elemento de vídeo
+      if (!videoRef.current) {
+        log('Elemento de vídeo não encontrado');
+        throw new Error('Elemento de vídeo não encontrado');
+      }
+      
+      // Verificar permissão de câmera
+      const hasPermission = await checkCameraPermission();
+      if (!hasPermission) {
+        throw new Error('Permissão de câmera negada');
+      }
+      
+      // Configurações de vídeo otimizadas
+      const constraints: MediaStreamConstraints = {
+        audio: false,
+        video: {
+          facingMode: 'environment', // Câmera traseira
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      
+      log('Acessando câmera...');
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Verificar disponibilidade de lanterna
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        // @ts-ignore - Propriedade torch pode não estar definida em todos os navegadores
+        const hasTorch = capabilities.torch || false;
+        setTorchAvailable(hasTorch);
+        log(`Lanterna disponível: ${hasTorch}`);
+      }
+      
+      // Armazenar referência para limpeza posterior
+      streamRef.current = stream;
+      
+      // Configurar o elemento de vídeo
+      const video = videoRef.current;
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true'); // Essencial para iOS
+      video.muted = true;
+      
+      // Iniciar reprodução
+      try {
+        await video.play();
+        log('Vídeo iniciado com sucesso');
+      } catch (playError) {
+        log(`Erro ao iniciar vídeo: ${playError}`);
+        throw new Error('Falha ao iniciar reprodução de vídeo');
+      }
+      
+      setIsScanning(true);
+      setMessage('Câmera ativada. Aponte para o QR Code.');
+      toast.success('Câmera ativada com sucesso!');
+      
+      setInitAttempts(prev => prev + 1);
+      
+      // Feedback de tempo
+      let scanAttempts = 0;
+      const feedbackTimer = setInterval(() => {
+        scanAttempts++;
+        
+        if (scanAttempts === 5) {
+          setMessage('Aponte a câmera para o QR Code');
+        } else if (scanAttempts === 10) {
+          setMessage('Certifique-se de que há boa iluminação');
+        } else if (scanAttempts === 15) {
+          setMessage('Mantenha o dispositivo estável');
+        }
+      }, 1000);
+      
+      scanTimerRef.current = feedbackTimer;
+      
+    } catch (error) {
+      log(`Erro na abordagem nativa: ${error}`);
+      
+      let errorMessage = 'Erro ao acessar câmera';
+      
+      if (String(error).includes('NotAllowedError') || String(error).includes('Permission denied')) {
+        errorMessage = 'Permissão de câmera negada. Verifique as configurações do navegador.';
+      } else if (String(error).includes('NotFoundError')) {
+        errorMessage = 'Câmera não encontrada neste dispositivo.';
+      } else if (String(error).includes('NotReadableError')) {
+        errorMessage = 'Câmera em uso por outro aplicativo.';
+      }
+      
+      toast.error(errorMessage);
+      setMessage(errorMessage);
+      setHasScanFailed(true);
+      
+      if (onScanError) onScanError(error);
+    }
+  }, [checkCameraPermission, cleanupScanner, log, onScanError]);
   
   // Processar QR Code lido
   const handleQrCodeSuccess = useCallback((decodedText: string) => {
@@ -198,236 +315,141 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     }
   }, [cleanupScanner, log, onScanSuccess, onScanError]);
   
-  // Abordagem alternativa para iOS usando getUserMedia diretamente
-  const startIOSDirectCamera = useCallback(async () => {
+  // Alternar lanterna
+  const toggleTorch = useCallback(async () => {
+    log('Tentando alternar lanterna');
+    
+    if (!torchAvailable) {
+      toast.error('Lanterna não disponível neste dispositivo');
+      return;
+    }
+    
     try {
-      log('Iniciando abordagem direta para iOS...');
-      setMessage('Inicializando câmera (iOS)...');
-      
-      // Limpar recursos anteriores
-      cleanupScanner();
-      
-      // Verificar elemento de vídeo
-      if (!videoRef.current) {
-        log('Elemento de vídeo não encontrado');
-        throw new Error('Elemento de vídeo não encontrado');
+      if (streamRef.current) {
+        const videoTrack = streamRef.current.getVideoTracks()[0];
+        
+        if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+          // Alternar estado da lanterna
+          const newTorchState = !torchEnabled;
+          
+          // Aplicar restrição
+          await videoTrack.applyConstraints({
+            // @ts-ignore - Propriedade torch pode não estar definida em todos os tipos
+            advanced: [{ torch: newTorchState }]
+          });
+          
+          setTorchEnabled(newTorchState);
+          log(`Lanterna ${newTorchState ? 'ativada' : 'desativada'}`);
+          toast.success(`Lanterna ${newTorchState ? 'ativada' : 'desativada'}`);
+        } else {
+          throw new Error('Track de vídeo não suporta restrições avançadas');
+        }
+      } else if (scannerRef.current) {
+        // Tentar usar a API do Html5Qrcode
+        const scanner = scannerRef.current as any;
+        const newTorchState = !torchEnabled;
+        
+        if (newTorchState) {
+          if (typeof scanner.turnFlashOn === 'function') {
+            await scanner.turnFlashOn();
+            setTorchEnabled(true);
+            log('Lanterna ativada via Html5Qrcode');
+            toast.success('Lanterna ativada');
+          } else {
+            throw new Error('Método turnFlashOn não disponível');
+          }
+        } else {
+          if (typeof scanner.turnFlashOff === 'function') {
+            await scanner.turnFlashOff();
+            setTorchEnabled(false);
+            log('Lanterna desativada via Html5Qrcode');
+            toast.success('Lanterna desativada');
+          } else {
+            throw new Error('Método turnFlashOff não disponível');
+          }
+        }
+      } else {
+        throw new Error('Nenhum stream ativo disponível');
       }
-      
-      // Configurações otimizadas para iOS
-      const constraints: MediaStreamConstraints = {
-        audio: false,
-        video: {
-          facingMode: 'environment', // Usar câmera traseira
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-      
-      log('Solicitando acesso à câmera no iOS...');
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      // Armazenar referência para limpeza posterior
-      streamRef.current = stream;
-      
-      // Conectar stream ao elemento de vídeo
-      videoRef.current.srcObject = stream;
-      videoRef.current.play();
-      
-      log('Câmera iOS inicializada com sucesso');
-      setMessage('Câmera ativada. Aponte para o QR Code.');
-      setIsScanning(true);
-      
-      toast.success('Câmera ativada!');
-      
-      // Feedback de tempo para iOS
-      let scanAttempts = 0;
-      const feedbackTimer = setInterval(() => {
-        scanAttempts++;
-        
-        if (scanAttempts === 5) {
-          setMessage('Aponte a câmera para o QR Code');
-        } else if (scanAttempts === 10) {
-          setMessage('Certifique-se de que há boa iluminação');
-        } else if (scanAttempts === 15) {
-          setMessage('Mantenha o dispositivo estável');
-        }
-        
-        // No iOS não temos leitura automática, apenas instruções
-      }, 1000);
-      
-      scanTimerRef.current = feedbackTimer;
-      
     } catch (error) {
-      log(`Erro na abordagem iOS direta: ${error}`);
-      
-      let errorMessage = 'Erro ao acessar câmera no iOS';
-      
-      if (String(error).includes('NotAllowedError')) {
-        errorMessage = 'Permissão de câmera negada. Verifique as configurações do Safari.';
-      } else if (String(error).includes('NotFoundError')) {
-        errorMessage = 'Câmera não encontrada neste dispositivo.';
-      }
-      
-      toast.error(errorMessage);
-      setMessage(errorMessage);
-      setHasScanFailed(true);
-      
-      if (onScanError) onScanError(error);
+      log(`Erro ao controlar lanterna: ${error}`);
+      toast.error('Não foi possível controlar a lanterna');
+      setTorchAvailable(false);
     }
-  }, [cleanupScanner, log, onScanError]);
+  }, [torchAvailable, torchEnabled, log]);
   
-  // Iniciar scanner padrão (para dispositivos não-iOS)
-  const startStandardScanner = useCallback(async () => {
-    try {
-      log('Iniciando scanner padrão...');
-      setMessage('Inicializando câmera...');
-      setHasScanFailed(false);
-      
-      // Limpar scanner anterior
-      cleanupScanner();
-      
-      // Verificar elemento HTML
-      const scannerContainer = document.getElementById('qr-reader');
-      if (!scannerContainer) {
-        throw new Error('Elemento HTML para scanner não encontrado');
-      }
-      
-      scannerContainer.innerHTML = '';
-      
-      // Solicitar permissão de câmera explícita
-      try {
-        log('Solicitando permissão de câmera...');
-        await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
-        log('Permissão de câmera concedida');
-      } catch (error) {
-        log(`Erro de permissão: ${error}`);
-        throw error;
-      }
-      
-      // Inicializar scanner
-      const html5QrCode = new Html5Qrcode('qr-reader', { 
-        verbose: false
-      });
-      scannerRef.current = html5QrCode;
-      
-      // Configurações simplificadas
-      const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1,
-      };
-      
-      log('Iniciando leitura de QR code...');
-      await html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        handleQrCodeSuccess,
-        (errorMessage) => {
-          // Ignorar erros comuns de "No QR code found"
-          if (errorMessage.includes('No QR code found')) return;
-          log(`Erro de leitura: ${errorMessage}`);
-        }
-      );
-      
-      setIsScanning(true);
-      setMessage('Aponte a câmera para o QR Code');
-      
-      // Feedback de tempo
-      let scanAttempts = 0;
-      const feedbackTimer = setInterval(() => {
-        scanAttempts++;
-        
-        if (scanAttempts === 5) {
-          setMessage('Posicione o QR Code no centro da tela');
-        } else if (scanAttempts === 10) {
-          setMessage('Certifique-se de que há boa iluminação');
-        } else if (scanAttempts >= 20 && scanAttempts % 5 === 0) {
-          setMessage(`Tentando ler o QR Code... (${scanAttempts}s)`);
-        }
-        
-        // Timeout após 30 segundos
-        if (scanAttempts >= 30) {
-          setMessage('Toque em Reiniciar para tentar novamente');
-          toast.error('Dificuldade em ler o QR Code. Tente novamente.');
-          clearInterval(feedbackTimer);
-        }
-      }, 1000);
-      
-      scanTimerRef.current = feedbackTimer;
-      
-    } catch (error) {
-      log(`Erro ao iniciar scanner padrão: ${error}`);
-      
-      let errorMessage = 'Erro ao iniciar scanner';
-      
-      if (String(error).includes('NotAllowedError') || String(error).includes('Permission denied')) {
-        errorMessage = 'Permissão de câmera negada. Verifique as permissões do navegador.';
-      } else if (String(error).includes('NotFoundError')) {
-        errorMessage = 'Câmera não encontrada neste dispositivo.';
-      } else if (String(error).includes('NotReadableError')) {
-        errorMessage = 'Câmera em uso por outro aplicativo.';
-      }
-      
-      toast.error(errorMessage);
-      setMessage(errorMessage);
-      setHasScanFailed(true);
-      
-      if (onScanError) onScanError(error);
+  // Fechar o scanner
+  const handleClose = useCallback(() => {
+    log('Fechando scanner');
+    cleanupScanner();
+    
+    if (onClose) {
+      onClose();
     }
-  }, [cleanupScanner, handleQrCodeSuccess, log, onScanError]);
-  
-  // Iniciar scanner (roteador baseado no dispositivo)
-  const startScanner = useCallback(() => {
-    // Em iOS, usar abordagem específica para maior compatibilidade
-    if (isIOS) {
-      log('Usando abordagem específica para iOS');
-      startIOSDirectCamera();
-    } else {
-      log('Usando scanner padrão para não-iOS');
-      startStandardScanner();
-    }
-  }, [isIOS, startIOSDirectCamera, startStandardScanner]);
-  
-  // Reiniciar scanner
-  const restartScanner = useCallback(() => {
-    log('Reiniciando scanner');
-    startScanner();
-  }, [startScanner]);
+  }, [cleanupScanner, onClose]);
   
   // Trocar câmera
   const switchCamera = useCallback(() => {
     log('Tentando trocar câmera');
     
-    // A implementação de troca de câmera continua a mesma
-    toast.success('Tentando trocar de câmera...');
-    
-    // Reiniciar o scanner para usar outra câmera
+    // Tentar trocar entre câmera frontal e traseira
     cleanupScanner();
-    setTimeout(() => {
-      startScanner();
-    }, 500);
-  }, [cleanupScanner, startScanner]);
+    
+    // No próximo início, tentar com configuração oposta
+    const constraints: MediaStreamConstraints = {
+      audio: false,
+      video: {
+        facingMode: torchEnabled ? 'user' : 'environment'
+      }
+    };
+    
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(stream => {
+        if (videoRef.current) {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+          }
+          
+          streamRef.current = stream;
+          videoRef.current.srcObject = stream;
+          videoRef.current.play()
+            .then(() => {
+              setIsScanning(true);
+              toast.success('Câmera alternada com sucesso');
+            })
+            .catch(e => {
+              log(`Erro ao iniciar vídeo após trocar câmera: ${e}`);
+              toast.error('Erro ao trocar câmera');
+            });
+        }
+      })
+      .catch(error => {
+        log(`Erro ao trocar câmera: ${error}`);
+        toast.error('Falha ao trocar câmera');
+        
+        // Tentar reiniciar com a configuração original
+        setTimeout(startNativeCamera, 500);
+      });
+  }, [cleanupScanner, startNativeCamera, torchEnabled, log]);
   
-  // Alternar lanterna
-  const toggleTorch = useCallback(() => {
-    log('Tentando alternar lanterna');
-    toast.error('Função de lanterna não disponível neste dispositivo');
-  }, []);
+  // Reiniciar scanner
+  const restartScanner = useCallback(() => {
+    log('Reiniciando scanner');
+    startNativeCamera();
+  }, [startNativeCamera]);
   
   // Iniciar scanner automaticamente ao montar
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isScanning && !hasScanFailed) {
-        startScanner();
+        startNativeCamera();
       }
-    }, 1500);
+    }, 1000);
     
     return () => {
       clearTimeout(timer);
     };
-  }, [isScanning, hasScanFailed, startScanner]);
+  }, [isScanning, hasScanFailed, startNativeCamera]);
   
   return (
     <div className="flex flex-col items-center w-full max-w-md mx-auto bg-white rounded-lg shadow-md p-4">
@@ -437,18 +459,13 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       </div>
       
       <div className="w-full h-80 relative bg-gray-100 rounded-md overflow-hidden mb-4">
-        {/* Container para o scanner HTML5 (usado em não-iOS) */}
-        <div id="qr-reader" className={`w-full h-full ${isIOS ? 'hidden' : ''}`}></div>
-        
-        {/* Container para vídeo direto (usado em iOS) */}
-        {isIOS && (
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-          ></video>
-        )}
+        {/* Container para vídeo direto */}
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+        ></video>
         
         {/* Overlay de erro */}
         {hasScanFailed && (
@@ -483,11 +500,33 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         >
           <FaCamera className="mr-2" /> Trocar Câmera
         </Button>
+        
+        <Button 
+          onClick={toggleTorch}
+          variant={torchEnabled ? "primary" : "secondary"}
+          className="flex items-center"
+        >
+          <FaLightbulb className="mr-2" /> {torchEnabled ? 'Desligar Luz' : 'Ligar Luz'}
+        </Button>
+        
+        <Button 
+          onClick={handleClose}
+          variant="secondary"
+          className="flex items-center"
+        >
+          <FaTimesCircle className="mr-2" /> Fechar
+        </Button>
       </div>
       
       <div className="text-xs text-gray-400 text-center mt-4">
         <p>Posicione o QR code do cupom fiscal dentro da área de leitura.</p>
         <p className="mt-1">Certifique-se de que há boa iluminação e que o QR code está visível por completo.</p>
+        
+        {initAttempts > 1 && (
+          <p className="mt-2 text-red-500">
+            Se a câmera não abrir, verifique as permissões do navegador ou tente em outro dispositivo.
+          </p>
+        )}
       </div>
     </div>
   );
