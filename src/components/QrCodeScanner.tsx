@@ -3,31 +3,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import Button from '@/components/ui/Button';
-import { FaSync, FaLightbulb, FaRedo, FaCamera, FaExclamationTriangle } from 'react-icons/fa';
+import { FaLightbulb, FaRedo, FaCamera, FaExclamationTriangle } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 
-// Estendendo interfaces nativas para suportar a propriedade torch e outras propriedades para câmera
+// Estendendo interfaces nativas para suportar a propriedade torch
 declare global {
   interface MediaTrackCapabilities {
     torch?: boolean;
-    focusMode?: string[];
-    exposureMode?: string[];
-    whiteBalanceMode?: string[];
   }
   
   interface MediaTrackConstraintSet {
     torch?: boolean;
-    focusMode?: string;
-    exposureMode?: string;
-    whiteBalanceMode?: string;
-  }
-
-  // Adicionar interface para o BarcodeDetector ao Window
-  interface Window {
-    BarcodeDetector?: {
-      new(options?: { formats?: string[] }): any;
-      detect?: (source: ImageBitmapSource) => Promise<any[]>;
-    };
   }
 }
 
@@ -51,12 +37,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
   const [scanFailed, setScanFailed] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   
-  // Referências para elementos DOM e recursos
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // Referência para o scanner HTML5QrCode
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const animationRef = useRef<number | null>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastScannedQR = useRef<string | null>(null);
   
@@ -102,191 +84,102 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
 
   // Parar escaneamento e liberar recursos
   const stopScanning = useCallback(() => {
-    setIsScanning(false);
-    
-    // Parar animação
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-    
-    // Limpar intervalos
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    
-    // Parar stream de vídeo
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    // Parar scanner html5-qrcode se estiver ativo
-    if (scannerRef.current) {
-      try {
-        scannerRef.current.stop().catch(e => log(`Erro ao parar scanner: ${e}`));
-        scannerRef.current = null;
-      } catch (e) {
-        log(`Erro ao limpar scanner: ${e}`);
-      }
-    }
-    
-    log('Scanner parado e recursos liberados');
-  }, [log]);
-
-  // Verificar se o dispositivo suporta BarcodeDetector API de forma segura
-  const supportsNativeBarcodeDetection = useCallback(() => {
     try {
-      // Verificação mais robusta para BarcodeDetector
-      return typeof window !== 'undefined' && 
-             'BarcodeDetector' in window && 
-             typeof window.BarcodeDetector === 'function';
-    } catch (error) {
-      log('Erro ao verificar suporte ao BarcodeDetector');
-      return false;
+      setIsScanning(false);
+      
+      // Limpar intervalos
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      
+      // Parar scanner html5-qrcode se estiver ativo
+      if (scannerRef.current) {
+        try {
+          scannerRef.current.stop()
+            .then(() => {
+              log("Scanner parado com sucesso");
+              scannerRef.current = null;
+            })
+            .catch(e => {
+              log(`Erro ao parar scanner: ${e}`);
+              scannerRef.current = null;
+            });
+        } catch (e) {
+          log(`Erro ao limpar scanner: ${e}`);
+          scannerRef.current = null;
+        }
+      }
+      
+      log('Scanner parado e recursos liberados');
+    } catch (e) {
+      log(`Erro ao parar scanner: ${e}`);
     }
   }, [log]);
 
-  // Iniciar scanner usando BarcodeDetector API (moderno)
-  const startNativeScanner = useCallback(async () => {
+  // Iniciar scanner usando Html5Qrcode
+  const startHtml5QrScanner = useCallback(async () => {
     try {
-      if (!videoRef.current || !canvasRef.current) {
-        log('Referências de vídeo ou canvas não encontradas');
-        return false;
+      log('Iniciando scanner HTML5QrCode');
+      
+      // Limpar qualquer scanner anterior
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+          scannerRef.current = null;
+        } catch (e) {
+          log(`Erro ao limpar scanner anterior: ${e}`);
+        }
       }
       
-      // Verificar novamente o suporte ao BarcodeDetector
-      if (!supportsNativeBarcodeDetection()) {
-        log('BarcodeDetector não é suportado neste navegador, usando fallback');
-        return false;
-      }
-      
-      log('Iniciando scanner nativo com BarcodeDetector API');
-      
-      // Obter stream de vídeo com configurações otimizadas
-      const constraints = {
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, min: 15 }
+      // Configurações simplificadas, com parâmetros mais conservadores
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+        disableFlip: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: false
         }
       };
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
+      // Função de sucesso simplificada
+      const qrCodeSuccessCallback = (decodedText: string) => {
+        processQrCode(decodedText);
+      };
       
-      const video = videoRef.current;
-      video.srcObject = stream;
-      video.setAttribute('playsinline', 'true');  // Importante para iOS
-      video.autoplay = true;
-      
-      await new Promise<void>((resolve) => {
-        video.onloadedmetadata = () => {
-          video.play().then(() => resolve()).catch(e => {
-            log(`Erro ao reproduzir vídeo: ${e}`);
-            resolve();
-          });
-        };
-      });
-      
-      // Verificar se a lanterna é suportada
-      try {
-        const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities();
-        setHasTorch(!!capabilities.torch);
-        log(`Lanterna ${capabilities.torch ? '' : 'não '}suportada pelo dispositivo`);
-        
-        // Tentar configurar foco automático, mas não falhar se não estiver disponível
-        try {
-          if (capabilities.focusMode && 
-              Array.isArray(capabilities.focusMode) && 
-              capabilities.focusMode.includes('continuous')) {
-            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-          }
-        } catch (e) {
-          log('Foco automático contínuo não suportado, ignorando');
+      // Função de erro que ignora mensagens comuns
+      const qrCodeErrorCallback = (errorMessage: string) => {
+        if (errorMessage.includes('No QR code found') || 
+            errorMessage.includes('Scanning paused')) {
+          return;
         }
-      } catch (e) {
-        log(`Erro ao verificar suporte à lanterna: ${e}`);
-        setHasTorch(false);
-      }
-      
-      // Configurar canvas para desenhar vídeo
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) {
-        log('Não foi possível obter contexto 2D do canvas');
-        return false;
-      }
-      
-      // Dimensões do vídeo
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      
-      // Verificar novamente se BarcodeDetector está disponível
-      if (!window.BarcodeDetector) {
-        log('BarcodeDetector não disponível, usando fallback');
-        return false;
-      }
+        log(`Erro durante escaneamento: ${errorMessage}`);
+      };
       
       try {
-        // Criar detector de códigos de barras
-        const barcodeDetector = new window.BarcodeDetector({ 
-          formats: ['qr_code'],
-        });
+        // Criar novo scanner
+        const html5QrCode = new Html5Qrcode("qr-reader", { verbose: false });
+        scannerRef.current = html5QrCode;
         
-        // Função para escanear frame por frame
-        const scanFrame = async () => {
-          if (!ctx || !video || !canvas || !isScanning) return;
-          
-          try {
-            // Desenhar frame atual no canvas
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Verificar novamente se o detector está disponível
-            if (!window.BarcodeDetector || !barcodeDetector) {
-              log('BarcodeDetector não disponível durante o escaneamento');
-              setScanFailed(true);
-              stopScanning();
-              return;
-            }
-            
-            // Detectar códigos no frame atual
-            try {
-              const barcodes = await barcodeDetector.detect(canvas);
-              
-              if (barcodes && barcodes.length > 0) {
-                // Encontrou um código QR
-                for (const barcode of barcodes) {
-                  if (barcode && barcode.rawValue) {
-                    processQrCode(barcode.rawValue);
-                    return; // Parar após processar o primeiro código
-                  }
-                }
-              }
-            } catch (detectionError) {
-              log(`Erro na detecção: ${detectionError}`);
-              // Continuar mesmo com erro de detecção em um frame
-            }
-            
-            // Continuar escaneamento se não encontrou nada
-            if (isScanning && !hasScanned) {
-              animationRef.current = requestAnimationFrame(scanFrame);
-            }
-          } catch (error) {
-            log(`Erro ao escanear frame: ${error}`);
-            // Não falhar completamente, apenas tentar o próximo frame
-            if (isScanning && !hasScanned) {
-              animationRef.current = requestAnimationFrame(scanFrame);
-            }
-          }
-        };
+        // Iniciar scanner com câmera traseira
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          qrCodeSuccessCallback,
+          qrCodeErrorCallback
+        );
         
-        // Iniciar loop de escaneamento
         setIsScanning(true);
-        animationRef.current = requestAnimationFrame(scanFrame);
+        setMessage('Aponte a câmera para o QR Code');
+        
+        // Verificar se a lanterna é suportada (simplificado)
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+          setHasTorch(cameras.length > 0);
+        } catch (e) {
+          setHasTorch(false);
+        }
         
         // Timer para feedback ao usuário
         let scanAttempts = 0;
@@ -295,128 +188,44 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
           
           if (scanAttempts === 3) {
             setMessage('Ajuste a câmera para que o QR code esteja visível');
-          } else if (scanAttempts === 10) {
+          } else if (scanAttempts === 8) {
             setMessage('Certifique-se de que há iluminação suficiente');
-          } else if (scanAttempts === 15) {
-            setMessage('Tente aproximar mais a câmera do QR code');
-          } else if (scanAttempts >= 20 && scanAttempts % 5 === 0) {
+          } else if (scanAttempts >= 15 && scanAttempts % 5 === 0) {
             setMessage(`Tentando ler o QR code... (${Math.floor(scanAttempts/2)}s)`);
           }
           
-          // Após 30 segundos sem sucesso, dar feedback
-          if (scanAttempts >= 30) {
+          // Após 20 segundos sem sucesso, dar feedback
+          if (scanAttempts >= 20) {
             toast.error('Dificuldade em ler o QR code. Tente novamente.');
             clearInterval(scanIntervalRef.current!);
           }
         }, 1000);
         
         return true;
-      } catch (barcodeError) {
-        log(`Erro ao criar BarcodeDetector: ${barcodeError}`);
-        return false;
+      } catch (cameraError) {
+        log(`Erro ao iniciar câmera: ${cameraError}`);
+        throw cameraError;
       }
-    } catch (error) {
-      log(`Erro ao iniciar scanner nativo: ${error}`);
-      toast.error('Não foi possível acessar a câmera');
-      setScanFailed(true);
-      return false;
-    }
-  }, [hasScanned, isScanning, log, processQrCode, stopScanning, supportsNativeBarcodeDetection]);
-
-  // Iniciar scanner usando Html5Qrcode (fallback)
-  const startHtml5QrScanner = useCallback(async () => {
-    try {
-      log('Iniciando scanner com fallback Html5Qrcode');
-      const qrCodeSuccessCallback = (decodedText: string) => {
-        processQrCode(decodedText);
-      };
-      
-      const config = {
-        fps: 15, // Aumentado de 10 para 15
-        qrbox: { width: 400, height: 400 }, // Aumentado de 350 para 400
-        aspectRatio: 1.0,
-        disableFlip: false,
-        formatsToSupport: [0], // QR_CODE apenas
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: false, // Desabilitar para evitar problema com o BarcodeDetector
-        },
-        rememberLastUsedCamera: true,
-        supportedScanTypes: [0, 2], // SCAN_TYPE_CAMERA e SCAN_TYPE_FILE
-      };
-      
-      // Criar instância do scanner
-      const scanner = new Html5Qrcode('qr-reader');
-      scannerRef.current = scanner;
-      
-      // Iniciar scanner
-      await scanner.start(
-        { facingMode: 'environment' },
-        config,
-        qrCodeSuccessCallback,
-        (errorMessage) => {
-          // Ignorar erros comuns durante escaneamento
-          if (typeof errorMessage === 'string' && 
-              (errorMessage.includes('No QR code found') || 
-               errorMessage.includes('Scanning paused'))) {
-            return;
-          }
-          
-          log(`Erro durante escaneamento: ${errorMessage}`);
-        }
-      );
-      
-      // Verificar se a lanterna é suportada via capacidades HTML5QRCode
-      try {
-        // @ts-ignore - Verificar métodos disponíveis em runtime
-        setHasTorch(typeof scanner.getRunningTrackCapabilities === 'function');
-      } catch (e) {
-        setHasTorch(false);
-      }
-      
-      setIsScanning(true);
-      setMessage('Aponte a câmera para o QR Code');
-      
-      // Timer para feedback ao usuário
-      let scanAttempts = 0;
-      scanIntervalRef.current = setInterval(() => {
-        scanAttempts++;
-        
-        if (scanAttempts === 3) {
-          setMessage('Ajuste a câmera para que o QR code esteja visível');
-        } else if (scanAttempts === 10) {
-          setMessage('Certifique-se de que há iluminação suficiente');
-        } else if (scanAttempts === 15) {
-          setMessage('Tente aproximar mais a câmera do QR code');
-        } else if (scanAttempts >= 20 && scanAttempts % 5 === 0) {
-          setMessage(`Tentando ler o QR code... (${Math.floor(scanAttempts/2)}s)`);
-        }
-        
-        // Após 30 segundos sem sucesso, dar feedback
-        if (scanAttempts >= 30) {
-          toast.error('Dificuldade em ler o QR code. Tente novamente.');
-          clearInterval(scanIntervalRef.current!);
-        }
-      }, 1000);
-      
-      return true;
     } catch (error) {
       log(`Erro ao iniciar scanner Html5Qrcode: ${error}`);
       setScanFailed(true);
+      if (onScanError) onScanError(error);
       return false;
     }
-  }, [log, processQrCode]);
+  }, [log, processQrCode, onScanError]);
 
-  // Iniciar escaneamento com permissão de câmera mais eficiente
+  // Iniciar escaneamento com permissão de câmera
   const startScanner = useCallback(async () => {
     // Resetar estado
     setScanFailed(false);
     setHasScanned(false);
     lastScannedQR.current = null;
-    setMessage('Inicializando câmera...');
+    setMessage('Aguarde, inicializando câmera...');
     
     // Verificar se há navegador / suporte à câmera
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       toast.error('Seu navegador não suporta acesso à câmera');
+      log('API de câmera não suportada');
       setScanFailed(true);
       return;
     }
@@ -425,91 +234,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       // Primeiro paramos qualquer scanner ativo
       stopScanning();
       
-      // Verificar permissão de câmera com timeout para evitar travamento
-      const permissionPromise = new Promise<boolean>(async (resolve) => {
-        try {
-          // Usar um timeout para a verificação de permissão
-          const permissionTimeout = setTimeout(() => {
-            log('Timeout ao verificar permissão de câmera');
-            resolve(false);
-          }, 3000); // 3 segundos de timeout
-
-          // Tentar obter um stream para verificar permissão
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: {
-              facingMode: 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            } 
-          });
-          stream.getTracks().forEach(track => track.stop());
-          
-          clearTimeout(permissionTimeout);
-          resolve(true);
-        } catch (error) {
-          log(`Erro ao verificar permissão de câmera: ${error}`);
-          resolve(false);
-        }
-      });
-      
-      const hasPermission = await permissionPromise;
-      if (!hasPermission) {
-        log('Permissão de câmera não concedida ou timeout atingido');
-        setScanFailed(true);
-        toast.error('Não foi possível acessar a câmera. Verifique as permissões.');
-        return;
-      }
-      
-      // Verifica de forma segura se o navegador suporta BarcodeDetector
-      let canUseNativeDetector = false;
-      try {
-        canUseNativeDetector = supportsNativeBarcodeDetection() && 
-                             typeof window.BarcodeDetector === 'function';
-        
-        // Verificação extra - tentar criar uma instância para garantir que funciona
-        if (canUseNativeDetector) {
-          const testDetector = new window.BarcodeDetector!();
-          canUseNativeDetector = typeof testDetector.detect === 'function';
-        }
-      } catch (e) {
-        log('Erro ao verificar suporte ao BarcodeDetector, usando fallback');
-        canUseNativeDetector = false;
-      }
-      
-      // Tentar scanner nativo primeiro, se suportado
-      let success = false;
-      if (canUseNativeDetector) {
-        log('Detector nativo de QR code suportado, tentando usar');
-        try {
-          success = await startNativeScanner();
-        } catch (e) {
-          log(`Erro ao iniciar scanner nativo: ${e}`);
-          success = false;
-        }
-      } else {
-        log('Detector nativo não suportado');
-      }
-      
-      // Se falhar ou não for suportado, usar fallback
-      if (!success) {
-        log('Usando scanner fallback');
-        try {
-          success = await startHtml5QrScanner();
-        } catch (e) {
-          log(`Erro ao iniciar scanner fallback: ${e}`);
-          success = false;
-          
-          // Última tentativa - recarregar e tentar novamente apenas com o fallback
-          try {
-            // Limpar quaisquer erros anteriores
-            setScanFailed(false);
-            success = await startHtml5QrScanner();
-          } catch (finalError) {
-            log(`Falha final ao iniciar scanner: ${finalError}`);
-            success = false;
-          }
-        }
-      }
+      // Tentar iniciar o scanner HTML5QrCode (versão simplificada)
+      const success = await startHtml5QrScanner();
       
       if (success) {
         toast.success('Câmera pronta!');
@@ -526,83 +252,37 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         onScanError(error);
       }
     }
-  }, [onScanError, startHtml5QrScanner, startNativeScanner, stopScanning, supportsNativeBarcodeDetection, log]);
+  }, [onScanError, startHtml5QrScanner, stopScanning, log]);
 
   // Alternar lanterna (quando disponível)
   const toggleTorch = useCallback(async () => {
     try {
-      if (!streamRef.current) {
-        toast.error('Câmera não está ativa');
+      if (!hasTorch || !scannerRef.current) {
+        toast.error('Lanterna não disponível');
         return;
       }
       
-      if (!hasTorch) {
-        toast.error('Este dispositivo não suporta lanterna');
-        return;
-      }
+      const newTorchState = !torchEnabled;
       
-      const track = streamRef.current.getVideoTracks()[0];
-      
-      // Método 1: API moderna - usar applyConstraints com torch
       try {
-        // Alternar estado da lanterna
-        const newTorchState = !torchEnabled;
-        await track.applyConstraints({ advanced: [{ torch: newTorchState }] });
-        setTorchEnabled(newTorchState);
-        
-        toast.success(newTorchState ? 'Lanterna ativada' : 'Lanterna desativada');
-        return;
-      } catch (e) {
-        log(`Método 1 falhou, tentando método 2: ${e}`);
-      }
-      
-      // Método 2: Usar imageCapture como alternativa
-      try {
-        if ('ImageCapture' in window) {
-          // @ts-ignore - ImageCapture pode não estar no TypeScript
-          const imageCapture = new ImageCapture(track);
-          if (imageCapture && 'setOptions' in imageCapture) {
-            // @ts-ignore - setOptions pode não estar no TypeScript
-            await imageCapture.setOptions({ fillLightMode: torchEnabled ? 'off' : 'flash' });
-            setTorchEnabled(!torchEnabled);
-            
-            toast.success(torchEnabled ? 'Lanterna ativada' : 'Lanterna desativada');
-            return;
-          }
+        // @ts-ignore - As propriedades podem não estar no tipo Html5Qrcode
+        if (newTorchState && typeof scannerRef.current.turnFlashOn === 'function') {
+          // @ts-ignore
+          await scannerRef.current.turnFlashOn();
+          setTorchEnabled(true);
+          toast.success('Lanterna ativada');
+        } else if (!newTorchState && typeof scannerRef.current.turnFlashOff === 'function') {
+          // @ts-ignore
+          await scannerRef.current.turnFlashOff();
+          setTorchEnabled(false);
+          toast.success('Lanterna desativada');
+        } else {
+          throw new Error('Função de lanterna não disponível');
         }
       } catch (e) {
-        log(`Método 2 falhou, tentando método 3: ${e}`);
+        log(`Erro ao alternar lanterna: ${e}`);
+        toast.error('Não foi possível controlar a lanterna');
       }
-      
-      // Método 3: Html5Qrcode específico
-      if (scannerRef.current) {
-        try {
-          if (torchEnabled) {
-            // @ts-ignore - As propriedades podem não estar no tipo Html5Qrcode
-            if (typeof scannerRef.current.turnFlashOff === 'function') {
-              // @ts-ignore
-              await scannerRef.current.turnFlashOff();
-              setTorchEnabled(false);
-              toast.success('Lanterna desativada');
-              return;
-            }
-          } else {
-            // @ts-ignore - As propriedades podem não estar no tipo Html5Qrcode
-            if (typeof scannerRef.current.turnFlashOn === 'function') {
-              // @ts-ignore
-              await scannerRef.current.turnFlashOn();
-              setTorchEnabled(true);
-              toast.success('Lanterna ativada');
-              return;
-            }
-          }
-        } catch (e) {
-          log(`Método 3 falhou: ${e}`);
-        }
-      }
-      
-      // Se chegou aqui, todos os métodos falharam
-      throw new Error('Nenhum método de controle de lanterna funcionou');
     } catch (error) {
       log(`Erro ao alternar lanterna: ${error}`);
       toast.error('Não foi possível controlar a lanterna');
@@ -645,104 +325,57 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
     startScanner();
   }, [startScanner]);
 
-  // Detectar câmeras disponíveis com timeout
+  // Detectar câmeras disponíveis
   useEffect(() => {
     const detectCameras = async () => {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-          log('API MediaDevices não suportada');
-          return;
-        }
-        
-        // Solicitar permissão primeiro para poder ver labels das câmeras
-        try {
-          // Usar um timeout para a verificação de permissão
-          const permissionPromise = new Promise<boolean>(async (resolve) => {
-            try {
-              const permissionTimeout = setTimeout(() => {
-                log('Timeout ao solicitar permissão inicial');
-                resolve(false);
-              }, 3000); // 3 segundos de timeout
-
-              const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: {
-                  facingMode: 'environment',
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 }
-                } 
-              });
-              stream.getTracks().forEach(track => track.stop());
-              
-              clearTimeout(permissionTimeout);
-              resolve(true);
-            } catch (error) {
-              log(`Erro ao obter permissão inicial: ${error}`);
-              resolve(false);
-            }
-          });
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length) {
+          const cameraOptions = cameras.map(camera => ({
+            id: camera.id,
+            label: camera.label || `Câmera ${camera.id.slice(0, 5)}`
+          }));
           
-          const hasPermission = await permissionPromise;
-          if (!hasPermission) {
-            setScanFailed(true);
-            return;
-          }
-        } catch (error) {
-          log(`Erro ao obter permissão inicial: ${error}`);
-          setScanFailed(true);
-          return;
-        }
-        
-        // Listar dispositivos
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        
-        if (videoDevices.length === 0) {
+          setCameras(cameraOptions);
+          
+          // Preferir câmera traseira
+          const backCamera = cameraOptions.find(camera => 
+            camera.label.toLowerCase().includes('back') || 
+            camera.label.toLowerCase().includes('traseira') ||
+            camera.label.toLowerCase().includes('environment')
+          );
+          
+          setCurrentCamera(backCamera ? backCamera.id : cameraOptions[0].id);
+        } else {
           log('Nenhuma câmera encontrada');
           setScanFailed(true);
-          return;
         }
-        
-        // Mapear câmeras
-        const cameraOptions = videoDevices.map(device => ({
-          id: device.deviceId,
-          label: device.label || `Câmera ${device.deviceId.slice(0, 5)}`
-        }));
-        
-        setCameras(cameraOptions);
-        
-        // Preferir câmera traseira
-        let defaultCamera = cameraOptions[0].id;
-        const backCamera = cameraOptions.find(camera => 
-          camera.label.toLowerCase().includes('back') || 
-          camera.label.toLowerCase().includes('traseira') ||
-          camera.label.toLowerCase().includes('environment')
-        );
-        
-        if (backCamera) {
-          defaultCamera = backCamera.id;
-        }
-        
-        setCurrentCamera(defaultCamera);
       } catch (error) {
         log(`Erro ao detectar câmeras: ${error}`);
-        setScanFailed(true);
+        // Não falhar completamente - algumas implementações podem não suportar esta API
+        // mas ainda permitir o acesso à câmera pelo facingMode
       }
     };
     
     detectCameras();
   }, [log]);
 
-  // Iniciar scanner automaticamente na montagem
+  // Iniciar scanner automaticamente após montagem
   useEffect(() => {
-    if (cameras.length > 0 && !isScanning && !scanFailed) {
-      startScanner();
-    }
+    // Um timer para começar o scanner um pouco depois da montagem do componente
+    // isso ajuda a garantir que o DOM está pronto
+    const timer = setTimeout(() => {
+      if (!isScanning && !scanFailed) {
+        startScanner();
+      }
+    }, 500);
     
     // Cleanup ao desmontar
     return () => {
+      clearTimeout(timer);
       stopScanning();
     };
-  }, [cameras, isScanning, scanFailed, startScanner, stopScanning]);
+  }, [isScanning, scanFailed, startScanner, stopScanning]);
 
   return (
     <div className="flex flex-col items-center w-full max-w-md mx-auto bg-white rounded-lg shadow-md p-4">
@@ -752,36 +385,8 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       </div>
       
       <div className="w-full h-96 relative bg-gray-100 rounded-md overflow-hidden mb-4">
-        {/* Área de vídeo para scanner nativo */}
-        <div className={`absolute inset-0 ${supportsNativeBarcodeDetection() ? 'block' : 'hidden'}`}>
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-            autoPlay
-          />
-          <canvas
-            ref={canvasRef}
-            className="hidden"
-          />
-          
-          {/* Indicador visual para área de escaneamento */}
-          {isScanning && !hasScanned && (
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 border-2 border-blue-500 rounded-lg animate-pulse"></div>
-              <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-68 h-68 border-2 border-transparent rounded-lg">
-                <div className="absolute top-0 left-0 w-16 h-2 bg-blue-500 rounded-full"></div>
-                <div className="absolute top-0 right-0 w-2 h-16 bg-blue-500 rounded-full"></div>
-                <div className="absolute bottom-0 left-0 w-2 h-16 bg-blue-500 rounded-full"></div>
-                <div className="absolute bottom-0 right-0 w-16 h-2 bg-blue-500 rounded-full"></div>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Área para scanner HTML5 (fallback) */}
-        <div id="qr-reader" className={`w-full h-full ${supportsNativeBarcodeDetection() ? 'hidden' : 'block'}`} />
+        {/* Área para scanner HTML5 */}
+        <div id="qr-reader" className="w-full h-full"></div>
         
         {/* Overlay de erro */}
         {scanFailed && (
