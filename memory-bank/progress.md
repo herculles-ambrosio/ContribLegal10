@@ -12,6 +12,9 @@
 - Otimização do scanner de QR code para processamento mais rápido e confiável.
 - Sistema de logout automático por inatividade após 3 minutos.
 - Correção do problema de fuso horário na exibição de datas em todas as telas do sistema.
+- Aprimoramento da leitura de QR codes com otimização de câmera e processamento redundante.
+- Implementação de mecanismos de verificação de permissão de câmera com timeout para evitar travamentos.
+- Sistema otimizado de extração direta de dados do QR code para preenchimento mais rápido do formulário.
 
 ## O que falta construir/corrigir
 - Adicionar testes automatizados para o fluxo de leitura de QR codes
@@ -19,6 +22,8 @@
 - Expandir o sistema de filtros para incluir mais opções (filtrar por período, valor, etc.)
 - Aprimorar o design responsivo dos dashboards para melhor usabilidade em dispositivos móveis
 - Implementar testes automatizados para componentes que utilizam recursos específicos do Next.js
+- Desenvolver sistema de coleta e análise de métricas de sucesso da leitura de QR codes
+- Adicionar sistema de feedback para que usuários possam reportar problemas específicos na leitura
 
 ## Status Atual
 - Implementação de uma solução radical que utiliza manipulação direta do DOM além do gerenciamento de estado do React
@@ -30,10 +35,15 @@
 - Sistema de filtragem implementado na página "Meus Documentos" com indicadores visuais e opção de remoção de filtro
 - Componentes reestruturados com Suspense boundaries para compatibilidade com o hook useSearchParams() no Next.js 15
 - Scanner de QR code otimizado com:
+  - Configurações aprimoradas de câmera (resolução, taxa de quadros)
+  - Foco automático contínuo quando disponível no dispositivo
+  - Área de escaneamento ampliada para melhor captação
   - Processamento paralelo para extração de dados
-  - Timeouts reduzidos e adaptáveis
+  - Timeouts reduzidos e adaptáveis em cada etapa
   - Sistema de recuperação após falhas
   - Feedback visual aprimorado
+  - Extração direta de data e valor diretamente do QR code
+  - Atualização contínua da interface à medida que os dados são extraídos
 - Sistema de logout automático por inatividade implementado:
   - Detecção de inatividade após 3 minutos sem interação
   - Hook personalizado useIdleTimer para monitoramento de eventos
@@ -57,6 +67,7 @@
 - No Next.js 15, o uso de useSearchParams() sem um Suspense boundary causa erros de renderização durante a build
 - A leitura de QR code poderia demorar muito tempo ou, às vezes, falhar completamente - agora otimizada com timeout mais curto e processamento paralelo
 - Problema de timezone nas datas: datas cadastradas apareciam como sendo do dia anterior nas telas de visualização - corrigido com manipulação direta de strings de data
+- Oscilação na leitura de QR codes em diferentes dispositivos e condições de iluminação - melhorado com as novas configurações de câmera e processamento redundante
 
 ## Estratégia de Resolução
 1. **Abordagem Híbrida**: Combinação de manipulação direta do DOM e gerenciamento de estado React
@@ -71,12 +82,16 @@
 10. **Timeouts Adaptativos**: Limites de tempo otimizados para cada operação em vez de um timeout global longo
 11. **Recuperação Proativa**: Sistema que oferece novas tentativas em caso de falha na leitura ou extração
 12. **Preservação de Data**: Implementação de funções para manipular diretamente strings de data, evitando conversões automáticas que podem causar mudanças de fuso horário
+13. **Otimização de Câmera**: Configuração avançada de parâmetros de câmera para melhorar a captura em diferentes condições
+14. **Extração Direta**: Implementação de funções específicas para extrair dados diretamente do QR code antes de chamar a API
+15. **Atualização Progressiva**: Preenchimento dos campos do formulário progressivamente à medida que os dados são obtidos
 
 ## Próximos Passos
-- Monitorar o comportamento da solução em produção
-- Refinar a implementação com base nos resultados observados
-- Reduzir gradualmente as redundâncias e logs extensivos após confirmação da estabilidade
-- Considerar uma reescrita mais limpa após a solução do problema crítico
+- Monitorar o comportamento da solução em diferentes dispositivos e condições de iluminação
+- Analisar os logs para identificar possíveis padrões de falha em dispositivos específicos
+- Refinar a implementação com base nos resultados observados e feedback dos usuários
+- Considerar a implementação de um sistema de análise de métricas para acompanhar a taxa de sucesso da leitura de QR codes
 - Expandir o sistema de filtros para incluir mais opções, como filtrar por período ou faixa de valor
 - Implementar funcionalidades adicionais de ordenação e agrupamento na visualização de documentos
-- Criar testes automatizados para capturar problemas de compatibilidade com futuras versões do Next.js 
+- Criar testes automatizados para capturar problemas de compatibilidade com futuras versões do Next.js
+- Avaliar a possibilidade de utilizar técnicas de machine learning para melhorar o reconhecimento de padrões em QR codes 

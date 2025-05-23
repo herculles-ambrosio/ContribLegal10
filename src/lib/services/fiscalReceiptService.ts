@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 
 // Constantes para depuração
 const DEBUG = true;  // Habilitar logs para diagnóstico
-const REDUCED_TIMEOUT = false;  // Se true, usa timeout reduzido para testes rápidos
+const REDUCED_TIMEOUT = true;  // Usar timeout reduzido para melhorar experiência do usuário
 
 export interface FiscalReceiptData {
   numeroDocumento?: string;
@@ -35,10 +35,9 @@ export async function extractDataFromFiscalReceipt(
 
     if (DEBUG) console.log('🔍 URL da API:', apiUrl);
 
-    // Fazer requisição para nossa API com timeout aumentado para 20 segundos
-    // para melhorar a chance de sucesso na extração
+    // Fazer requisição para nossa API com timeout reduzido
     const controller = new AbortController();
-    const timeoutDuration = REDUCED_TIMEOUT ? 5000 : 12000; // 5 ou 12 segundos
+    const timeoutDuration = REDUCED_TIMEOUT ? 4000 : 10000; // 4 ou 10 segundos (reduzidos)
     const timeoutId = setTimeout(() => {
       if (DEBUG) console.log('⚠️ TIMEOUT ACIONADO! Abortando requisição após', timeoutDuration/1000, 'segundos');
       controller.abort();
@@ -64,6 +63,25 @@ export async function extractDataFromFiscalReceipt(
       dataEmissao: undefined
     };
     
+    // Extrair dados diretamente da URL por padrões comuns antes de qualquer processamento
+    try {
+      // Tentar extrair valor diretamente da URL
+      const urlValor = extrairValorDiretamenteDaURL(urlProcessada);
+      if (urlValor) {
+        resultadoParcial.valor = formatarValor(urlValor);
+        if (DEBUG) console.log('✅ [EXTRACAO DIRETA URL] Valor encontrado:', resultadoParcial.valor);
+      }
+      
+      // Tentar extrair data diretamente da URL
+      const urlData = extrairDataDiretamenteDaURL(urlProcessada);
+      if (urlData) {
+        resultadoParcial.dataEmissao = formatarData(urlData);
+        if (DEBUG) console.log('✅ [EXTRACAO DIRETA URL] Data encontrada:', resultadoParcial.dataEmissao);
+      }
+    } catch (e) {
+      if (DEBUG) console.log('⚠️ Erro ao extrair dados diretamente da URL:', e);
+    }
+    
     // Processar dados em paralelo para otimização
     // Inicializa todas as tarefas ao mesmo tempo, mas usa um timeout mais curto
     try {
@@ -75,9 +93,9 @@ export async function extractDataFromFiscalReceipt(
         // 2. Chamada à API (mais preciso, mas mais lento)
         (async () => {
           try {
-            // Usar um timeout maior para a chamada da API
+            // Usar um timeout menor para a chamada da API
             const apiController = new AbortController();
-            const apiTimeoutId = setTimeout(() => apiController.abort(), 18000); // 18 segundos máximo
+            const apiTimeoutId = setTimeout(() => apiController.abort(), 6000); // 6 segundos máximo (reduzido)
             
             const response = await fetch(apiUrl, {
               method: 'POST',
@@ -91,6 +109,8 @@ export async function extractDataFromFiscalReceipt(
                 originalLinkPreserve: linkCompleto // ADICIONAR LINK ORIGINAL PARA PRESERVAR NA API
               }),
               signal: apiController.signal,
+              // Adicionar cache: 'no-store' para evitar problemas com cache
+              cache: 'no-store',
             });
             
             clearTimeout(apiTimeoutId);
@@ -194,6 +214,83 @@ export async function extractDataFromFiscalReceipt(
 }
 
 /**
+ * Extrai valor monetário diretamente da URL utilizando padrões comuns
+ */
+function extrairValorDiretamenteDaURL(url: string): string | undefined {
+  try {
+    // Padrões comuns para valores em URLs de cupons fiscais
+    const valorPatterns = [
+      /[&?]vNF=(\d+[.,]\d+)/i,
+      /[&?]vPag=(\d+[.,]\d+)/i,
+      /[&?]valor=(\d+[.,]\d+)/i,
+      /[&?]total=(\d+[.,]\d+)/i,
+      /[&?]valorTotal=(\d+[.,]\d+)/i,
+      /valor:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total:?\s*r?\$?\s*(\d+[.,]\d+)/i
+    ];
+
+    for (const pattern of valorPatterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair valor da URL:", e);
+    return undefined;
+  }
+}
+
+/**
+ * Extrai data diretamente da URL utilizando padrões comuns
+ */
+function extrairDataDiretamenteDaURL(url: string): string | undefined {
+  try {
+    // Padrões comuns para datas em URLs de cupons fiscais
+    const dataPatterns = [
+      /[&?]dhEmi=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]dhEmi=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]data=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]data=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /data:?\s*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      // Formato timestamp (14 digitos)
+      /[&?]dhEmi=(\d{14})/i
+    ];
+
+    for (const pattern of dataPatterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        let dataExtraida = match[1];
+        
+        // Se for formato timestamp (14 dígitos), converter para data
+        if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
+          // Formato: AAAAMMDDHHMMSS
+          const ano = dataExtraida.substring(0, 4);
+          const mes = dataExtraida.substring(4, 6);
+          const dia = dataExtraida.substring(6, 8);
+          dataExtraida = `${dia}/${mes}/${ano}`;
+        }
+        // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
+        else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
+          const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+          if (matches) {
+            dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
+          }
+        }
+        
+        return dataExtraida.replace(/-/g, '/');
+      }
+    }
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair data da URL:", e);
+    return undefined;
+  }
+}
+
+/**
  * Função otimizada para extrair dados diretamente da URL do QR code
  * sem depender da API para melhorar a velocidade
  */
@@ -219,7 +316,10 @@ async function extrairDadosDiretamente(url: string, debug = false): Promise<Fisc
         params.get('VALOR'),
         params.get('price'),
         params.get('amount'),
-        params.get('amt')
+        params.get('amt'),
+        params.get('tNF'),
+        params.get('valorNF'),
+        params.get('vlrNF')
       ];
       
       for (const val of possiveisValores) {
@@ -240,11 +340,13 @@ async function extrairDadosDiretamente(url: string, debug = false): Promise<Fisc
         params.get('date'),
         params.get('dt'),
         params.get('emissao'),
-        params.get('EMISSAO')
+        params.get('EMISSAO'),
+        params.get('dtEmis'),
+        params.get('dataEmi')
       ];
       
       for (const data of possiveisDatas) {
-        if (data && /\d{2}[\/\.-]\d{2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{2}[\/\.-]\d{2}/.test(data)) {
+        if (data && /\d{2}[\/\.-]\d{2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{2}[\/\.-]\d{2}|\d{14}/.test(data)) {
           resultado.dataEmissao = formatarData(data);
           if (debug) console.log(`🔍 [URL] Data extraída do parâmetro: ${resultado.dataEmissao}`);
           break;
@@ -255,97 +357,148 @@ async function extrairDadosDiretamente(url: string, debug = false): Promise<Fisc
       if (debug) console.log('⚠️ [URL] Erro ao analisar parâmetros da URL:', linkError);
     }
     
-    // 2. Tentar acessar a página rapidamente para extração direta com timeout aumentado (5s)
+    // Se não encontrou dados ainda, tentar acessar a página da URL
+    // mas apenas se não tiver os dois valores (data e valor)
     if (!resultado.valor || !resultado.dataEmissao) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos
+        if (debug) console.log('🔍 [FETCH] Tentando acessar a página para extração direta');
         
-        const response = await fetch(url, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5 segundos máximo
+        
+        const response = await fetch(url, { 
           method: 'GET',
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html',
+            'Cache-Control': 'no-cache',
           },
           signal: controller.signal,
+          cache: 'no-store'
         });
         
         clearTimeout(timeoutId);
         
-        if (response.ok) {
-          const text = await response.text();
-          
-          // Extrair valor usando regex expandidos
-          if (!resultado.valor) {
-            const valorPatterns = [
-              /(?:Valor Total|Total|Valor)(?:\s*R\$)?[\s:]*([0-9]+[,.][0-9]{2})/i,
-              /(?:R\$\s*)([0-9]+[,.][0-9]{2})/i,
-              /(?:VALOR\s*TOTAL\s*R\$\s*)([0-9]+[,.][0-9]{2})/i,
-              /(?:TOTAL\s*R\$\s*)([0-9]+[,.][0-9]{2})/i,
-              /(?:TOTAL:?\s*)([0-9]+[,.][0-9]{2})/i,
-              /(?:VALOR:?\s*)([0-9]+[,.][0-9]{2})/i
-            ];
-            
-            for (const pattern of valorPatterns) {
-              const valorMatches = text.match(pattern);
-              if (valorMatches && valorMatches[1]) {
-                resultado.valor = formatarValor(valorMatches[1]);
-                if (debug) console.log(`🔍 [HTML] Valor extraído com regex: ${resultado.valor}`);
-                break;
-              }
-            }
-          }
-          
-          // Extrair data usando regex expandidos
-          if (!resultado.dataEmissao) {
-            const dataPatterns = [
-              /(?:Data(?:\s*de)?\s*Emissão|Emissão)(?:\s*:)?\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
-              /(?:DATA\s*EMISSÃO:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
-              /(?:EMISSÃO:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
-              /(?:DATA:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
-              /(?:EMI:?\s*)([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i,
-              /([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i
-            ];
-            
-            for (const pattern of dataPatterns) {
-              const dataMatches = text.match(pattern);
-              if (dataMatches && dataMatches[1]) {
-                resultado.dataEmissao = dataMatches[1];
-                if (debug) console.log(`🔍 [HTML] Data extraída com regex: ${resultado.dataEmissao}`);
-                break;
-              }
-            }
-          }
-          
-          // Se ainda não tem data, buscar por outros formatos
-          if (!resultado.dataEmissao) {
-            const dataPatternsFallback = [
-              /(?:Data(?:\s*de)?\s*Emissão|Emissão)(?:\s*:)?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-              /(?:DATA\s*EMISSÃO:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-              /(?:EMISSÃO:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i,
-              /(?:DATA:?\s*)([0-9]{4}-[0-9]{2}-[0-9]{2})/i
-            ];
-            
-            for (const pattern of dataPatternsFallback) {
-              const dataMatches = text.match(pattern);
-              if (dataMatches && dataMatches[1]) {
-                resultado.dataEmissao = formatarData(dataMatches[1]);
-                if (debug) console.log(`🔍 [HTML] Data extraída com regex alternativo: ${resultado.dataEmissao}`);
-                break;
-              }
-            }
+        if (!response.ok) {
+          throw new Error(`Erro ao acessar página: ${response.status}`);
+        }
+        
+        const htmlContent = await response.text();
+        
+        // Se ainda não tem valor, tentar extrair do HTML
+        if (!resultado.valor) {
+          const valorExtract = extrairValorDoHTML(htmlContent);
+          if (valorExtract) {
+            resultado.valor = formatarValor(valorExtract);
+            if (debug) console.log(`🔍 [HTML] Valor extraído: ${resultado.valor}`);
           }
         }
-      } catch (preError) {
-        if (debug) console.log('⚠️ [HTML] Erro ao acessar página:', preError);
-        // Ignora erros na pré-extração direta
+        
+        // Se ainda não tem data, tentar extrair do HTML
+        if (!resultado.dataEmissao) {
+          const dataExtract = extrairDataDoHTML(htmlContent);
+          if (dataExtract) {
+            resultado.dataEmissao = formatarData(dataExtract);
+            if (debug) console.log(`🔍 [HTML] Data extraída: ${resultado.dataEmissao}`);
+          }
+        }
+      } catch (fetchError) {
+        if (debug) console.log('⚠️ [FETCH] Erro ao acessar página:', fetchError);
       }
     }
     
     return resultado;
   } catch (error) {
-    if (debug) console.log('❌ [DIRETO] Erro na extração direta:', error);
-    // Se ocorrer qualquer erro, retornar o que conseguimos até agora
+    console.error('❌ Erro na extração direta:', error);
     return resultado;
+  }
+}
+
+/**
+ * Extrai valor monetário do HTML usando padrões comuns
+ */
+function extrairValorDoHTML(html: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar valores monetários em HTML
+    const valorPatterns = [
+      /(?:valor|total)[^\d]*r?\$?\s*(\d+[.,]\d+)/i,
+      /(?:value|amount|total)[^\d]*r?\$?\s*(\d+[.,]\d+)/i,
+      /r\$\s*(\d+[.,]\d+)/i,
+      /total:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total do documento:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total da compra:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /vNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /tNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor da nota:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor da compra:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valorNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      // Procurar em conteúdo de elementos
+      /<[^>]*class="[^"]*valor[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*class="[^"]*total[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*class="[^"]*price[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*valor[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*total[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*price[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i
+    ];
+    
+    for (const pattern of valorPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        // Extrair apenas números e pontuação
+        const valorText = match[1].replace(/[^\d,.]/g, '');
+        if (valorText && /\d/.test(valorText)) {
+          return valorText;
+        }
+      }
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair valor do HTML:", e);
+    return undefined;
+  }
+}
+
+/**
+ * Extrai data do HTML usando padrões comuns
+ */
+function extrairDataDoHTML(html: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar datas em HTML
+    const dataPatterns = [
+      /(?:data\s*(?:de)?\s*emissão|emitido\s*(?:em)?)[^\d]*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /(?:date|emission\s*date)[^\d]*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /(?:data\s*(?:de)?\s*emissão|emitido\s*(?:em)?)[^\d]*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /(?:date|emission\s*date)[^\d]*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /data:?\s*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      // Procurar em conteúdo de elementos
+      /<[^>]*class="[^"]*data[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*class="[^"]*data[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*class="[^"]*date[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*class="[^"]*date[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*id="[^"]*data[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*id="[^"]*data[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*id="[^"]*date[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*id="[^"]*date[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i
+    ];
+    
+    for (const pattern of dataPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        // Extrair apenas a data
+        const dataText = match[1].replace(/[^\d\/\.-]/g, '');
+        if (dataText && /\d/.test(dataText)) {
+          return dataText;
+        }
+      }
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair data do HTML:", e);
+    return undefined;
   }
 }
 

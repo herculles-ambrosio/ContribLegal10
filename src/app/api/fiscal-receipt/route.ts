@@ -85,614 +85,401 @@ export async function POST(request: NextRequest) {
       console.log('API-DEBUG > Usando link normalizado como número do documento:', numeroDocumento);
     }
     
-    // Inicializar o controller para timeout da requisição
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    // Extrair informações do próprio link se possível (comum em QR codes da SEFAZ MG)
-    try {
-      // Padrões mais robustos para valores em URLs de QR codes fiscais
-      // Tentar diversos formatos de acordo com os padrões conhecidos
-      const valorPatterns = [
-        /(?:vNF=|valorNF=|valor=|total=|vPag=)([0-9,.]+)/i,
-        /(?:vNF|valorNF|valor|total|vPag)[=:]([0-9,.]+)/i,
-        /(?:R\\$)([0-9,.]+)/i,
-        /(?:valor.*?)([0-9]+[,.][0-9]{2})/i,
-        /(?:VALOR.*?:?\s*)([0-9]+[,.][0-9]{2})/i,
-        /(?:Total.*?:?\s*)([0-9]+[,.][0-9]{2})/i,
-        /(?<=total).*?([0-9]+[,.][0-9]{2})/i,
-        /(?<=valor).*?([0-9]+[,.][0-9]{2})/i,
-        /(?:R\$\s*)([0-9,.]+)/i,  // Com espaços entre R$ e o valor
-        /([0-9]+,[0-9]{2})(?=\s*$)/i  // Valor no final da string
-      ];
-      
-      // Testar todos os padrões até encontrar um valor válido
-      for (const pattern of valorPatterns) {
-        const valorMatch = normalizedLink.match(pattern);
-        if (valorMatch && valorMatch[1]) {
-          // Normalizar o valor - remover pontos e substituir vírgula por ponto
-          let valorExtraido = valorMatch[1].replace(/\./g, '').replace(',', '.');
-          
-          // Verificar se o valor é válido (deve ser um número)
-          if (!isNaN(parseFloat(valorExtraido))) {
-            valor = valorExtraido;
-            console.log('API-DEBUG > Valor extraído do link:', valor);
-            break;
-          }
-        }
-      }
-      
-      // Tentar extrair data do link com padrões mais robustos
-      const dataPatterns = [
-        // Padrões de data comuns em URLs de QR codes fiscais
-        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
-        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
-        /(?:dhEmi|dtEmissao|data|dt)[=:]([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
-        /(?:dhEmi|dtEmissao|data|dt)[=:]([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
-        /Data:?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i,
-        /Data:?\s*([0-9]{4}[/-][0-9]{2}[/-][0-9]{2})/i,
-        // Extrair data de formato timestamp
-        /(?:dhEmi=|dtEmissao=|data=|dt=)([0-9]{14})/i,
-      ];
-      
-      // Testar todos os padrões
-      for (const pattern of dataPatterns) {
-        const dataMatch = normalizedLink.match(pattern);
-        if (dataMatch && dataMatch[1]) {
-          let dataExtraida = dataMatch[1];
-          
-          // Se for formato timestamp (14 dígitos), converter para data
-          if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
-            // Formato: AAAAMMDDHHMMSS
-            const ano = dataExtraida.substring(0, 4);
-            const mes = dataExtraida.substring(4, 6);
-            const dia = dataExtraida.substring(6, 8);
-            dataExtraida = `${dia}/${mes}/${ano}`;
-          }
-          // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
-          else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
-            const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
-            if (matches) {
-              dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
-            }
-          }
-          
-          dataEmissao = dataExtraida.replace(/-/g, '/');
-          console.log('API-DEBUG > Data extraída do link:', dataEmissao);
-          break;
-        }
-      }
-      
-      // Extrair valores diretamente do URL usando parâmetros conhecidos
-      try {
-        // Se o link é uma URL, tentar extrair parâmetros dela
-        const url = new URL(normalizedLink);
-        
-        // Extrair valor de parâmetros explícitos da URL
-        const valorParam = url.searchParams.get('vNF') || 
-                           url.searchParams.get('valorNF') || 
-                           url.searchParams.get('valor') || 
-                           url.searchParams.get('total') ||
-                           url.searchParams.get('vPag');
-                           
-        if (valorParam && !isNaN(parseFloat(valorParam.replace(',', '.')))) {
-          valor = valorParam.replace(',', '.');
-          console.log('API-DEBUG > Valor extraído da URL (parâmetro):', valor);
-        }
-        
-        // Extrair data de parâmetros explícitos da URL
-        const dataParam = url.searchParams.get('dhEmi') || 
-                          url.searchParams.get('dtEmissao') || 
-                          url.searchParams.get('data') || 
-                          url.searchParams.get('dt');
-                          
-        if (dataParam) {
-          // Tentar extrair data do parâmetro encontrado
-          let dataParamFormatada = dataParam;
-          
-          // Se for timestamp de 14 dígitos
-          if (dataParam.length === 14 && /^\d+$/.test(dataParam)) {
-            const ano = dataParam.substring(0, 4);
-            const mes = dataParam.substring(4, 6);
-            const dia = dataParam.substring(6, 8);
-            dataParamFormatada = `${dia}/${mes}/${ano}`;
-          } 
-          // Se for formato ISO (AAAA-MM-DD)
-          else if (/^\d{4}-\d{2}-\d{2}/.test(dataParam)) {
-            const [ano, mes, dia] = dataParam.split('-');
-            dataParamFormatada = `${dia}/${mes}/${ano}`;
-          }
-          
-          dataEmissao = dataParamFormatada;
-          console.log('API-DEBUG > Data extraída da URL (parâmetro):', dataEmissao);
-        }
-      } catch (urlError) {
-        // Ignorar erros ao analisar a URL
-        console.log('API-DEBUG > Erro ao analisar URL:', urlError);
-      }
-    } catch (linkExtractionError) {
-      console.error('API-DEBUG > Erro ao extrair dados do link:', linkExtractionError);
-    }
-
-    // Preparar a URL para a requisição HTTP
-    let requestUrl = normalizedLink;
-    
     // Se não for uma URL completa, tentar adicionar o protocolo
-    if (!requestUrl.startsWith('http://') && !requestUrl.startsWith('https://')) {
-      requestUrl = `https://${requestUrl}`;
-      console.log('API - URL modificada com protocolo https:', requestUrl);
+    let urlProcessada = normalizedLink;
+    if (!urlProcessada.startsWith('http://') && !urlProcessada.startsWith('https://')) {
+      urlProcessada = `https://${urlProcessada}`;
+      console.log('API-DEBUG > URL modificada com protocolo https:', urlProcessada);
     }
-
-    console.log('API - Iniciando requisição HTTP para:', requestUrl);
     
-    try {
-      // Tentar acessar a página do cupom fiscal com timeout
-      const response = await fetch(requestUrl, {
-        method: 'GET',
-        headers: {
-          // Tentar simular um navegador para evitar bloqueios
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-        },
-        redirect: 'follow',
-        signal: controller.signal,
-      });
-      
-      // Limpar timeout
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.error(`API - Erro ao acessar página: ${response.status} ${response.statusText}`);
-        
-        // Se já tiver extraído algum dado do próprio link, retornar esses dados
-        // SEMPRE com o numeroDocumento sendo o link original
-        if (numeroDocumento || valor || dataEmissao) {
-          console.log('API - Usando dados extraídos do link, pois a página não pôde ser acessada');
-          return NextResponse.json({ 
-            numeroDocumento: originalLink || numeroDocumento, 
-            valor, 
-            dataEmissao 
-          }, {
-            status: 200,
-            headers: responseHeaders,
-          });
-        }
-        
-        // Caso contrário, retornar mensagem sem dados
-        return NextResponse.json(
-          { 
-            message: 'QR Code processado, sem dados extraídos',
-            numeroDocumento: originalLink || numeroDocumento
-          },
-          { status: 200, headers: responseHeaders }
-        );
-      }
-      
-      // Obter o conteúdo da página
-      const html = await response.text();
-      console.log(`API - Página acessada com sucesso (${html.length} bytes)`);
-      
-      // Carregar o HTML com Cheerio para análise
-      const $ = cheerio.load(html);
-      
-      // EXTRAÇÃO DIRETA ESPECÍFICA PARA SEFAZ MG - MELHORADA
-      // ===================================================
-      
-      // TÉCNICA 1: Extrair diretamente elementos com texto relacionado a valor
-      if (!valor) {
-        try {
-          console.log("API - Tentando extrair valor usando seletores diretos");
-          
-          // Array de seletores específicos que podem conter o valor total
-          const valorSelectors = [
-            '.valor-total', '.total-nota', '.nfce-valor-total', 
-            '.imposto-texto', '.info-valor', '.totalNota',
-            'span:contains("Valor Total")', 'span:contains("VALOR TOTAL")',
-            'span:contains("Total R$")', 'span:contains("TOTAL R$")',
-            'div:contains("Valor Total")', 'div:contains("VALOR TOTAL")',
-            'td:contains("Valor Total")', 'td:contains("VALOR TOTAL")',
-            'strong:contains("Valor Total")', 'strong:contains("VALOR TOTAL")',
-            'strong:contains("Valor pago R$")', 'strong:contains("VALOR PAGO R$")',
-            'strong:contains("Total:")', 'strong:contains("TOTAL:")',
-            '.valor', '.total', '.valorTotal', '.totalNota', '.valorPago'
-          ];
-          
-          // Tentar cada seletor e ver se encontra algo
-          for (const selector of valorSelectors) {
-            const elements = $(selector);
-            if (elements.length > 0) {
-              console.log(`API - Encontrado elemento com seletor: ${selector}`);
-              
-              // Para cada elemento encontrado, tentar extrair um valor
-              elements.each((_, el) => {
-                if (valor) return false; // Se já encontrou, sair do loop
-                
-                const text = $(el).text().trim();
-                console.log(`API - Texto do elemento: "${text}"`);
-                
-                // Padrões para encontrar valores monetários em diferentes formatos
-                const patterns = [
-                  /R\$\s*([\d.,]+)/i,           // R$ seguido de números
-                  /([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/,  // Formato brasileiro: 1.234,56
-                  /([\d]{1,3}(?:,[\d]{3})*\.[\d]{2})/,  // Formato americano: 1,234.56
-                  /([\d]+[,.][\d]{2})/          // Formato simples: 1234,56 ou 1234.56
-                ];
-                
-                // Tentar cada padrão para extrair valor
-                for (const pattern of patterns) {
-                  const match = text.match(pattern);
-                  if (match && match[1]) {
-                    console.log(`API - Valor encontrado no texto: ${match[1]}`);
-                    
-                    // Normalizar para formato com ponto como separador decimal
-                    let valorExtraido = match[1];
-                    
-                    // Se for formato brasileiro (com vírgula)
-                    if (valorExtraido.includes(',')) {
-                      valorExtraido = valorExtraido.replace(/\./g, '').replace(',', '.');
-                    }
-                    
-                    // Tentar converter para número para validar
-                    const valorNumerico = parseFloat(valorExtraido);
-                    if (!isNaN(valorNumerico) && valorNumerico > 0) {
-                      valor = valorExtraido;
-                      console.log(`API - Valor extraído e normalizado: ${valor}`);
-                      return false; // Sair do loop
-                    }
-                  }
-                }
-                
-                // Se não encontrou com os padrões acima, procurar no próximo elemento
-                const nextEl = $(el).next();
-                if (nextEl.length) {
-                  const nextText = nextEl.text().trim();
-                  console.log(`API - Texto do próximo elemento: "${nextText}"`);
-                  
-                  // Tentar extrair valor do próximo elemento
-                  for (const pattern of patterns) {
-                    const match = nextText.match(pattern);
-                    if (match && match[1]) {
-                      let valorExtraido = match[1];
-                      if (valorExtraido.includes(',')) {
-                        valorExtraido = valorExtraido.replace(/\./g, '').replace(',', '.');
-                      }
-                      
-                      const valorNumerico = parseFloat(valorExtraido);
-                      if (!isNaN(valorNumerico) && valorNumerico > 0) {
-                        valor = valorExtraido;
-                        console.log(`API - Valor extraído do próximo elemento: ${valor}`);
-                        return false; // Sair do loop
-                      }
-                    }
-                  }
-                }
-              });
-            }
-            
-            if (valor) break; // Se já encontrou valor, sair do loop principal
-          }
-        } catch (e) {
-          console.warn('API - Erro ao tentar extrair valor usando seletores diretos:', e);
-        }
-      }
-      
-      // TÉCNICA 2: Extrair diretamente elementos com texto relacionado a data
-      if (!dataEmissao) {
-        try {
-          console.log("API - Tentando extrair data usando seletores diretos");
-          
-          // Array de seletores específicos que podem conter a data
-          const dataSelectors = [
-            '.data-emissao', '.nfce-data', '.info-data', '.data-nota',
-            'span:contains("Data de Emissão")', 'span:contains("DATA DE EMISSÃO")',
-            'span:contains("Data Emissão")', 'span:contains("DATA EMISSÃO")',
-            'div:contains("Data de Emissão")', 'div:contains("DATA DE EMISSÃO")',
-            'td:contains("Data de Emissão")', 'td:contains("DATA DE EMISSÃO")',
-            'strong:contains("Data")', 'strong:contains("DATA")',
-            '.data', '.dataEmissao', '.emissao'
-          ];
-          
-          // Padrões para reconhecer datas em diferentes formatos
-          const dataPatterns = [
-            /(\d{2}\/\d{2}\/\d{4})/,                 // DD/MM/YYYY
-            /(\d{2}-\d{2}-\d{4})/,                   // DD-MM-YYYY
-            /(\d{2}\.\d{2}\.\d{4})/,                 // DD.MM.YYYY
-            /(\d{4}-\d{2}-\d{2})/,                   // YYYY-MM-DD
-            /(\d{4}\/\d{2}\/\d{2})/,                 // YYYY/MM/DD
-            /(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2})/ // DD/MM/YYYY HH:MM:SS
-          ];
-          
-          // Tentar cada seletor
-          for (const selector of dataSelectors) {
-            const elements = $(selector);
-            if (elements.length > 0) {
-              console.log(`API - Encontrado elemento com seletor: ${selector}`);
-              
-              // Para cada elemento encontrado, tentar extrair uma data
-              elements.each((_, el) => {
-                if (dataEmissao) return false; // Se já encontrou, sair do loop
-                
-                const text = $(el).text().trim();
-                console.log(`API - Texto do elemento: "${text}"`);
-                
-                // Tentar cada padrão para extrair data
-                for (const pattern of dataPatterns) {
-                  const match = text.match(pattern);
-                  if (match && match[1]) {
-                    console.log(`API - Data encontrada no texto: ${match[1]}`);
-                    
-                    // Extrair apenas a parte da data (sem horas)
-                    let dataExtraida = match[1];
-                    
-                    // Se contiver horas, remover
-                    if (dataExtraida.includes(' ')) {
-                      dataExtraida = dataExtraida.split(' ')[0];
-                    }
-                    
-                    // Converter para o formato DD/MM/YYYY se estiver em outro formato
-                    if (dataExtraida.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
-                      // Formato YYYY-MM-DD ou YYYY/MM/DD
-                      const separador = dataExtraida.includes('-') ? '-' : '/';
-                      const [ano, mes, dia] = dataExtraida.split(separador);
-                      dataExtraida = `${dia}/${mes}/${ano}`;
-                    } else if (dataExtraida.match(/^\d{2}[-\.]\d{2}[-\.]\d{4}$/)) {
-                      // Formato DD-MM-YYYY ou DD.MM.YYYY
-                      dataExtraida = dataExtraida.replace(/[-\.]/g, '/');
-                    }
-                    
-                    // Validar se é uma data válida fazendo parse
-                    const parts = dataExtraida.split('/');
-                    if (parts.length === 3) {
-                      const dia = parseInt(parts[0], 10);
-                      const mes = parseInt(parts[1], 10) - 1; // Meses em JS são 0-11
-                      const ano = parseInt(parts[2], 10);
-                      
-                      const dataObj = new Date(ano, mes, dia);
-                      
-                      if (dataObj.getFullYear() === ano && 
-                          dataObj.getMonth() === mes && 
-                          dataObj.getDate() === dia) {
-                        dataEmissao = dataExtraida;
-                        console.log(`API - Data extraída e normalizada: ${dataEmissao}`);
-                        return false; // Sair do loop
-                      }
-                    }
-                  }
-                }
-                
-                // Se não encontrou com os padrões acima, procurar no próximo elemento
-                const nextEl = $(el).next();
-                if (nextEl.length) {
-                  const nextText = nextEl.text().trim();
-                  console.log(`API - Texto do próximo elemento: "${nextText}"`);
-                  
-                  // Tentar extrair data do próximo elemento
-                  for (const pattern of dataPatterns) {
-                    const match = nextText.match(pattern);
-                    if (match && match[1]) {
-                      let dataExtraida = match[1];
-                      
-                      // Mesmo processamento de data do bloco anterior
-                      if (dataExtraida.includes(' ')) {
-                        dataExtraida = dataExtraida.split(' ')[0];
-                      }
-                      
-                      if (dataExtraida.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
-                        const separador = dataExtraida.includes('-') ? '-' : '/';
-                        const [ano, mes, dia] = dataExtraida.split(separador);
-                        dataExtraida = `${dia}/${mes}/${ano}`;
-                      } else if (dataExtraida.match(/^\d{2}[-\.]\d{2}[-\.]\d{4}$/)) {
-                        dataExtraida = dataExtraida.replace(/[-\.]/g, '/');
-                      }
-                      
-                      const parts = dataExtraida.split('/');
-                      if (parts.length === 3) {
-                        const dia = parseInt(parts[0], 10);
-                        const mes = parseInt(parts[1], 10) - 1;
-                        const ano = parseInt(parts[2], 10);
-                        
-                        const dataObj = new Date(ano, mes, dia);
-                        
-                        if (dataObj.getFullYear() === ano && 
-                            dataObj.getMonth() === mes && 
-                            dataObj.getDate() === dia) {
-                          dataEmissao = dataExtraida;
-                          console.log(`API - Data extraída do próximo elemento: ${dataEmissao}`);
-                          return false; // Sair do loop
-                        }
-                      }
-                    }
-                  }
-                }
-              });
-            }
-            
-            if (dataEmissao) break; // Se já encontrou data, sair do loop principal
-          }
-        } catch (e) {
-          console.warn('API - Erro ao tentar extrair data usando seletores diretos:', e);
-        }
-      }
-      
-      // TÉCNICA 3: Pesquisa agressiva em todo o HTML por padrões de data e valor
-      if (!valor || !dataEmissao) {
-        try {
-          console.log("API - Iniciando pesquisa agressiva no HTML completo");
-          
-          // Extrair todas as strings que possam conter valores monetários
-          if (!valor) {
-            const valorMatches = html.match(/R\$\s*([\d.,]+)/g) || 
-                                html.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/g) ||
-                                html.match(/([\d]+,[\d]{2})/g);
-                                
-            if (valorMatches && valorMatches.length > 0) {
-              console.log(`API - Encontrados ${valorMatches.length} possíveis valores no HTML`);
-              
-              // Filtrar apenas valores que parecem ser "totais" (geralmente os maiores)
-              const valoresNumericos = valorMatches.map(match => {
-                // Extrair apenas o número
-                const numMatch = match.match(/R\$\s*([\d.,]+)/) || 
-                               match.match(/([\d]{1,3}(?:\.[\d]{3})*,[\d]{2})/) ||
-                               match.match(/([\d]+,[\d]{2})/);
-                               
-                if (numMatch && numMatch[1]) {
-                  // Normalizar para formato com ponto como separador decimal
-                  let valorStr = numMatch[1].replace(/\./g, '').replace(',', '.');
-                  return parseFloat(valorStr);
-                }
-                return 0;
-              }).filter(num => num > 0);
-              
-              if (valoresNumericos.length > 0) {
-                // Ordenar valores do maior para o menor
-                valoresNumericos.sort((a, b) => b - a);
-                
-                // O valor total geralmente é o maior valor na página
-                const maiorValor = valoresNumericos[0];
-                console.log(`API - Maior valor encontrado na página: ${maiorValor}`);
-                
-                valor = maiorValor.toString();
-              }
-            }
-          }
-          
-          // Extrair todas as strings que possam conter datas
-          if (!dataEmissao) {
-            const dataMatches = html.match(/\d{2}\/\d{2}\/\d{4}/g) || 
-                               html.match(/\d{2}-\d{2}-\d{4}/g) ||
-                               html.match(/\d{2}\.\d{2}\.\d{4}/g);
-                               
-            if (dataMatches && dataMatches.length > 0) {
-              console.log(`API - Encontradas ${dataMatches.length} possíveis datas no HTML`);
-              
-              // Verificar no texto ao redor dessas datas por palavras-chave
-              for (const dataTexto of dataMatches) {
-                // Se encontrar "Data", "Emissão", etc. próximo à data, é provável que seja a data de emissão
-                const indexData = html.indexOf(dataTexto);
-                const textoAoRedor = html.substring(Math.max(0, indexData - 50), Math.min(html.length, indexData + 50));
-                
-                if (/data|emissão|emitido|emitida/i.test(textoAoRedor)) {
-                  console.log(`API - Data encontrada com contexto de emissão: ${dataTexto}`);
-                  dataEmissao = dataTexto.replace(/[-\.]/g, '/');
-                  break;
-                }
-              }
-              
-              // Se não encontrou com contexto, usar a primeira data
-              if (!dataEmissao && dataMatches.length > 0) {
-                dataEmissao = dataMatches[0].replace(/[-\.]/g, '/');
-                console.log(`API - Usando primeira data encontrada: ${dataEmissao}`);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('API - Erro na pesquisa agressiva:', e);
-        }
-      }
-      
-      // GARANTIA: Ao final de toda extração, garantir que numeroDocumento é o link original
-      // Isso é crítico para o funcionamento correto das regras de negócio
-      numeroDocumento = originalLink || numeroDocumento;
-      console.log('API-DEBUG > Garantindo número do documento como link completo:', numeroDocumento);
-      
-      // Garantir que o valor, se extraído mas inválido, seja tratado
+    // Tentar extrair valor do link com padrões mais robustos
+    if (!valor) {
+      // Padrões de valor comum em URLs de QR codes fiscais
+      valor = extrairValorDoLink(urlProcessada);
       if (valor) {
-        try {
-          // Tentar converter para número para verificar validade
-          const valorNumerico = parseFloat(valor.replace(',', '.'));
-          if (isNaN(valorNumerico) || valorNumerico <= 0) {
-            console.log('API-DEBUG > Valor extraído inválido, removendo:', valor);
-            valor = ''; // Valor inválido, melhor não enviar do que enviar errado
-          } else {
-            // Formatar com precisão de 2 casas decimais
-            valor = valorNumerico.toFixed(2).replace('.', ',');
-            console.log('API-DEBUG > Valor normalizado:', valor);
-          }
-        } catch (e) {
-          console.log('API-DEBUG > Erro ao validar valor, removendo:', valor);
-          valor = ''; // Em caso de erro, remover valor
-        }
+        console.log('API-DEBUG > Valor extraído diretamente do link:', valor);
       }
-      
-      // Montar objeto com os resultados encontrados
-      // IMPORTANTE: numeroDocumento DEVE ser o link completo
-      const dados = {
-        numeroDocumento, // Este é o link completo
-        valor,
-        dataEmissao
-      };
-      
-      console.log('API-DEBUG > Dados extraídos finais (enviando para cliente):', JSON.stringify(dados));
-      
-      // Retornar os dados encontrados, mesmo que alguns estejam vazios
-      return NextResponse.json(dados, {
-        status: 200,
-        headers: responseHeaders,
-      });
-      
-    } catch (error) {
-      // Limpar timeout em caso de erro
-      clearTimeout(timeoutId);
-
-      // Verificar se é um erro de timeout
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.error('API - Timeout na requisição para o site da SEFAZ');
-        
-        // Se já tiver extraído algum dado do próprio link, retornar esses dados
-        if (numeroDocumento || valor || dataEmissao) {
-          console.log('API - Usando dados extraídos do link, pois houve timeout na requisição');
-          return NextResponse.json({ 
-            numeroDocumento: originalLink || numeroDocumento, 
-            valor, 
-            dataEmissao 
-          }, {
-            status: 200,
-            headers: responseHeaders,
-          });
-        }
-        
-        return NextResponse.json(
-          { 
-            message: 'QR Code processado, sem dados extraídos',
-            numeroDocumento: originalLink || numeroDocumento
-          },
-          { status: 200, headers: responseHeaders }
-        );
+    }
+    
+    // Tentar extrair data do link com padrões mais robustos
+    if (!dataEmissao) {
+      dataEmissao = extrairDataDoLink(urlProcessada);
+      if (dataEmissao) {
+        console.log('API-DEBUG > Data extraída diretamente do link:', dataEmissao);
       }
-
-      console.error('API - Erro ao processar a página do cupom fiscal:', error);
-      
-      // Se já tiver extraído algum dado do próprio link, retornar esses dados
-      if (numeroDocumento || valor || dataEmissao) {
-        console.log('API - Usando dados extraídos do link, pois houve erro ao processar página');
-        return NextResponse.json({ 
-          numeroDocumento: originalLink || numeroDocumento, 
-          valor, 
-          dataEmissao 
-        }, {
-          status: 200,
-          headers: responseHeaders,
-        });
-      }
-      
-      // Retornar um objeto para evitar erro, mesmo que sem dados
+    }
+    
+    // Se já temos todos os dados necessários, podemos retornar imediatamente
+    if (valor && dataEmissao) {
+      console.log('API-DEBUG > Dados completos extraídos sem precisar acessar a página');
       return NextResponse.json(
         { 
-          message: 'QR Code processado, sem dados extraídos',
-          numeroDocumento: originalLink || numeroDocumento
+          numeroDocumento,
+          valor,
+          dataEmissao
         },
-        { status: 200, headers: responseHeaders }
+        { headers: responseHeaders }
       );
     }
     
-  } catch (error) {
-    console.error('API - Erro geral ao processar o cupom fiscal:', error);
+    // Se ainda não temos todos os dados, tentar acessar a página para extrair
+    try {
+      console.log('API-DEBUG > Tentando acessar a página para extrair dados:', urlProcessada);
+      
+      // Configurar um timeout para a requisição
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 5000);
+      
+      // Fazer a requisição com headers de um navegador comum
+      const response = await fetch(urlProcessada, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        signal: abortController.signal,
+        cache: 'no-store',
+        next: { revalidate: 0 }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const html = await response.text();
+        
+        // Tentar extrair valor do HTML se ainda não temos
+        if (!valor) {
+          valor = extrairValorDoHtml(html);
+          if (valor) {
+            console.log('API-DEBUG > Valor extraído do HTML:', valor);
+          }
+        }
+        
+        // Tentar extrair data do HTML se ainda não temos
+        if (!dataEmissao) {
+          dataEmissao = extrairDataDoHtml(html);
+          if (dataEmissao) {
+            console.log('API-DEBUG > Data extraída do HTML:', dataEmissao);
+          }
+        }
+      } else {
+        console.log('API-DEBUG > Não foi possível acessar a página, status:', response.status);
+      }
+    } catch (error) {
+      console.error('API-DEBUG > Erro ao acessar a página:', error);
+      // Continuar com os dados que já temos
+    }
+    
+    // Formatar valores antes de retornar, para garantir consistência
+    if (valor) {
+      valor = formatarValor(valor);
+    }
+    
+    if (dataEmissao) {
+      dataEmissao = formatarData(dataEmissao);
+    }
+    
+    console.log('API-DEBUG > Dados finais extraídos:', { numeroDocumento, valor, dataEmissao });
+    
+    // Retornar os dados extraídos
     return NextResponse.json(
-      { message: 'QR Code processado, sem dados extraídos' },
-      { status: 200, headers: {...corsHeaders} }
+      { 
+        numeroDocumento,
+        valor,
+        dataEmissao
+      },
+      { headers: responseHeaders }
     );
+  } catch (error) {
+    console.error('API-ERROR > Erro ao processar requisição:', error);
+    
+    return NextResponse.json(
+      { error: 'Erro ao processar a requisição' },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}
+
+// Função para extrair valor do link usando regex
+function extrairValorDoLink(url: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar valores monetários em URLs
+    const valorPatterns = [
+      /[&?]vNF=(\d+[.,]\d+)/i,
+      /[&?]vPag=(\d+[.,]\d+)/i,
+      /[&?]valor=(\d+[.,]\d+)/i,
+      /[&?]total=(\d+[.,]\d+)/i,
+      /[&?]valorTotal=(\d+[.,]\d+)/i,
+      /[&?]tNF=(\d+[.,]\d+)/i,
+      /[&?]valorNF=(\d+[.,]\d+)/i,
+      /[&?]vlrNF=(\d+[.,]\d+)/i,
+      /[&?]price=(\d+[.,]\d+)/i,
+      /[&?]amount=(\d+[.,]\d+)/i,
+      /valor:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total:?\s*r?\$?\s*(\d+[.,]\d+)/i
+    ];
+
+    for (const pattern of valorPatterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    // Tentar extrair da URL decodificada
+    try {
+      const decodedUrl = decodeURIComponent(url);
+      if (decodedUrl !== url) {
+        for (const pattern of valorPatterns) {
+          const match = decodedUrl.match(pattern);
+          if (match && match[1]) {
+            return match[1];
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao decodificar URL:', e);
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair valor do link:", e);
+    return undefined;
+  }
+}
+
+// Função para extrair data do link usando regex
+function extrairDataDoLink(url: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar datas em URLs
+    const dataPatterns = [
+      /[&?]dhEmi=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]dhEmi=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]data=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]data=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]dataEmissao=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]dataEmissao=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]dtEmis=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]dtEmis=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]dt=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]dt=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /[&?]date=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /[&?]date=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      // Formato timestamp (14 digitos)
+      /[&?]dhEmi=(\d{14})/i,
+      /[&?]data=(\d{14})/i,
+      /[&?]dt=(\d{14})/i
+    ];
+
+    for (const pattern of dataPatterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        let dataExtraida = match[1];
+        
+        // Se for formato timestamp (14 dígitos), converter para data
+        if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
+          // Formato: AAAAMMDDHHMMSS
+          const ano = dataExtraida.substring(0, 4);
+          const mes = dataExtraida.substring(4, 6);
+          const dia = dataExtraida.substring(6, 8);
+          dataExtraida = `${dia}/${mes}/${ano}`;
+        }
+        // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
+        else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
+          const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+          if (matches) {
+            dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
+          }
+        }
+        
+        return dataExtraida.replace(/-/g, '/');
+      }
+    }
+    
+    // Tentar extrair da URL decodificada
+    try {
+      const decodedUrl = decodeURIComponent(url);
+      if (decodedUrl !== url) {
+        for (const pattern of dataPatterns) {
+          const match = decodedUrl.match(pattern);
+          if (match && match[1]) {
+            let dataExtraida = match[1];
+            
+            // Aplicar as mesmas conversões de formato
+            if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
+              const ano = dataExtraida.substring(0, 4);
+              const mes = dataExtraida.substring(4, 6);
+              const dia = dataExtraida.substring(6, 8);
+              dataExtraida = `${dia}/${mes}/${ano}`;
+            }
+            else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
+              const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+              if (matches) {
+                dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
+              }
+            }
+            
+            return dataExtraida.replace(/-/g, '/');
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao decodificar URL:', e);
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair data do link:", e);
+    return undefined;
+  }
+}
+
+// Função para extrair valor do HTML
+function extrairValorDoHtml(html: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar valores monetários em HTML
+    const valorPatterns = [
+      /(?:valor|total)[^\d]*r?\$?\s*(\d+[.,]\d+)/i,
+      /(?:value|amount|total)[^\d]*r?\$?\s*(\d+[.,]\d+)/i,
+      /r\$\s*(\d+[.,]\d+)/i,
+      /total:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total do documento:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /total da compra:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /vNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /tNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor da nota:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valor da compra:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      /valorNF:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+      // Procurar em conteúdo de elementos
+      /<[^>]*class="[^"]*valor[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*class="[^"]*total[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*class="[^"]*price[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*valor[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*total[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i,
+      /<[^>]*id="[^"]*price[^"]*"[^>]*>([^<]*\d+[.,]\d+[^<]*)</i
+    ];
+    
+    for (const pattern of valorPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        // Extrair apenas números e pontuação
+        const valorText = match[1].replace(/[^\d,.]/g, '');
+        if (valorText && /\d/.test(valorText)) {
+          return valorText;
+        }
+      }
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair valor do HTML:", e);
+    return undefined;
+  }
+}
+
+// Função para extrair data do HTML
+function extrairDataDoHtml(html: string): string | undefined {
+  try {
+    // Diversos padrões para encontrar datas em HTML
+    const dataPatterns = [
+      /(?:data\s*(?:de)?\s*emissão|emitido\s*(?:em)?)[^\d]*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /(?:date|emission\s*date)[^\d]*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /(?:data\s*(?:de)?\s*emissão|emitido\s*(?:em)?)[^\d]*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /(?:date|emission\s*date)[^\d]*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      /data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+      /data:?\s*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+      // Procurar em conteúdo de elementos
+      /<[^>]*class="[^"]*data[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*class="[^"]*data[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*class="[^"]*date[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*class="[^"]*date[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*id="[^"]*data[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*id="[^"]*data[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i,
+      /<[^>]*id="[^"]*date[^"]*"[^>]*>([^<]*\d{2}[\/\.-]\d{2}[\/\.-]\d{4}[^<]*)</i,
+      /<[^>]*id="[^"]*date[^"]*"[^>]*>([^<]*\d{4}[\/\.-]\d{2}[\/\.-]\d{2}[^<]*)</i
+    ];
+    
+    for (const pattern of dataPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        // Extrair apenas a data
+        const dataText = match[1].replace(/[^\d\/\.-]/g, '');
+        if (dataText && /\d/.test(dataText)) {
+          return dataText;
+        }
+      }
+    }
+    
+    return undefined;
+  } catch (e) {
+    console.error("Erro ao extrair data do HTML:", e);
+    return undefined;
+  }
+}
+
+// Função para formatar valor monetário
+function formatarValor(valorStr: string): string {
+  try {
+    // Limpar string e garantir formato correto
+    const valorLimpo = valorStr.replace(/[^\d,.]/g, '').replace(',', '.');
+    const valor = parseFloat(valorLimpo);
+    
+    if (isNaN(valor)) {
+      return '0,00';
+    }
+    
+    // Formatar para padrão brasileiro
+    return valor.toLocaleString('pt-BR', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
+  } catch (e) {
+    console.error("Erro ao formatar valor:", e);
+    return '0,00';
+  }
+}
+
+// Função para formatar data para padrão brasileiro
+function formatarData(dataStr: string): string {
+  try {
+    // Se for timestamp (14 dígitos), converter para data
+    if (dataStr.length === 14 && /^\d+$/.test(dataStr)) {
+      // Formato: AAAAMMDDHHMMSS
+      const ano = dataStr.substring(0, 4);
+      const mes = dataStr.substring(4, 6);
+      const dia = dataStr.substring(6, 8);
+      return `${dia}/${mes}/${ano}`;
+    }
+    
+    // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
+    if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataStr)) {
+      const matches = dataStr.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+      if (matches) {
+        return `${matches[3]}/${matches[2]}/${matches[1]}`;
+      }
+    }
+    
+    // Se já estiver no formato DD/MM/AAAA
+    if (/^([0-9]{2})[-\/]([0-9]{2})[-\/]([0-9]{4})$/.test(dataStr)) {
+      return dataStr.replace(/-/g, '/');
+    }
+    
+    // Se não for possível formatar, usar a data atual
+    const hoje = new Date();
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const ano = hoje.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  } catch (e) {
+    console.error("Erro ao formatar data:", e);
+    // Retornar data atual como fallback
+    const hoje = new Date();
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const ano = hoje.getFullYear();
+    return `${dia}/${mes}/${ano}`;
   }
 } 

@@ -1,111 +1,68 @@
 # Active Context
 
 ## Foco de Trabalho Atual
-Correção crítica na leitura de QR codes de cupons fiscais com foco na preservação de dados essenciais:
+Otimização crítica na leitura de QR codes de cupons fiscais para garantir confiabilidade e precisão:
 
-1. **Garantia de preservação do link completo do QR code** no campo "Número do Documento" - implementamos múltiplas camadas de redundância para assegurar que o link original seja sempre preservado.
+1. **Melhoria na captura e processamento de QR codes** - implementação de configurações otimizadas de câmera, ajustes de foco automático, aumento da área de leitura e adição de redundância nas diferentes camadas de processamento.
 
-2. **Extração correta do valor monetário** do cupom fiscal para o campo "Valor (R$)" - foram implementados métodos mais robustos e agressivos de extração, incluindo acesso direto à página do link.
+2. **Verificação de permissão de câmera com timeout** - implementação de sistema de timeout na verificação de permissão de câmera para evitar travamentos e assegurar melhor experiência ao usuário.
 
-3. **Extração precisa da data de emissão** para o campo "Data de Emissão" no formato brasileiro (dd/mm/aaaa) - foram adicionados padrões mais abrangentes de reconhecimento de datas.
+3. **Processamento paralelo aprimorado na extração de dados** - implementação de novos padrões de reconhecimento e múltiplas etapas de extração independentes de dados para aprimorar a confiabilidade da leitura.
 
-4. **Redução significativa do tempo de processamento** - implementação de processamento paralelo e otimização de timeouts para resposta mais rápida ao usuário:
-   - Redução do timeout principal de 60s para 15s na extração de dados
-   - Execução simultânea de extração direta e chamada de API para economizar tempo
-   - Implementação de limites de tempo mais curtos em cada etapa do processo
-   - Retorno antecipado com dados parciais em casos de timeout
+4. **Extração ágil de dados diretamente do QR code** - adição de novas funções para extrair data e valor diretamente do código QR antes mesmo da chamada à API, acelerando o preenchimento dos campos.
 
-5. **Navegação intuitiva no Painel do Contribuinte** - implementação de dashboards clicáveis que permitem acesso direto à grid de visualização de cupons com filtros específicos:
-   - Dashboard "Total de Cupons" - redireciona para a lista completa de cupons
-   - Dashboard "Cupons Validados" - redireciona para a lista filtrada de cupons validados
+5. **Redução adicional do tempo de processamento** - otimização de timeouts para valores mais realistas e comportamento mais responsivo:
+   - Timeout de permissão de câmera reduzido para 2-3 segundos
+   - Timeout de extração de dados reduzido para 8 segundos
+   - Processamento paralelo com redundância em múltiplas camadas
 
-6. **Compatibilidade com Next.js 15** - correção do erro de rendering com o hook useSearchParams() utilizando Suspense boundaries:
-   - Reestruturação do componente de listagem de documentos para seguir as melhores práticas do Next.js 15
-   - Implementação de componente de carregamento apropriado enquanto os parâmetros da URL são processados
+6. **Feedback visual aprimorado durante o processamento** - implementação de melhor feedback visual, incluindo tela de scan aumentada e indicadores de área de leitura mais visíveis.
 
-7. **Otimização do scanner de QR code** - melhorias significativas na velocidade e confiabilidade da leitura de QR code:
-   - Verificação de permissão de câmera com timeout para evitar bloqueios
-   - Processamento paralelo para extrair dados mais rapidamente
-   - Redução do timeout de processamento de 20s para 10s
-   - Feedback visual aprimorado durante cada etapa do processamento
-   - Mecanismo de recuperação que sugere nova tentativa em caso de falha
-   - Funções auxiliares otimizadas para atualização consistente da interface
+7. **Novos padrões de reconhecimento** - implementação de expressões regulares mais abrangentes para reconhecer diferentes formatos de QR codes de diversos estados e sistemas.
 
-8. **Implementação de logout automático por inatividade** - segurança aprimorada para contas de usuários:
-   - Detecção de inatividade após 3 minutos sem interação do usuário
-   - Logout automático e redirecionamento para a página de login
-   - Aplicação apenas em rotas protegidas/autenticadas
-   - Monitoramento de diversos tipos de eventos de usuário para detecção precisa de atividade
+8. **Mecanismos de recuperação robustos** - aprimoramento da capacidade de recuperação em caso de falhas parciais, garantindo que pelo menos os dados essenciais sejam preservados.
 
 ## Mudanças Recentes
 
-### Implementação de Logout Automático por Inatividade
-- Criação de hook personalizado `useIdleTimer` para monitorar atividade do usuário
-- Implementação de `IdleTimerProvider` para aplicar o timer de inatividade globalmente
-- Criação de `AuthPageWrapper` para aplicar o timer apenas em páginas autenticadas
-- Configuração de timeout de 3 minutos para logout automático
-- Monitoramento de eventos como cliques, teclas e movimentos do mouse
-- Feedback visual com mensagem de toast ao realizar logout por inatividade
+### Melhoria no Componente QrCodeScanner
+- Otimização das configurações de vídeo (resolução, taxa de quadros)
+- Implementação de foco automático contínuo quando disponível
+- Aumento da área de escaneamento para melhor captura
+- Adição de atributo autoPlay para inicialização mais rápida
+- Implementação de timeout na verificação de permissão de câmera
 
-### Otimização do Serviço de Extração (fiscalReceiptService.ts)
-- Redução de timeout de 60s para 15s para melhorar experiência do usuário
-- Implementação de processamento paralelo para extração direta do link e chamada da API
-- Otimização do pré-processamento para retornar mais rapidamente com resultados parciais
-- Redução de logs de depuração para melhorar a performance
-- Novas funções auxiliares para formatação consistente de valores e datas
+### Otimização do Processamento de QR Code na Página de Cadastro
+- Implementação de extração direta de data e valor do QR code
+- Adição de redundância para preservação do link original
+- Redução do timeout de extração de 10 para 8 segundos
+- Atualização contínua da interface com dados parciais conforme disponíveis
+- Verificação de permissão de câmera com timeout para evitar travamentos
 
-### Melhorias no Componente de Cadastro (page.tsx)
-- Redução do timeout de processamento do QR code de 20s para 10s
-- Implementação de feedback visual mais responsivo durante o processo
-- Otimização da verificação de permissão de câmera para iniciar mais rapidamente
-- Funções auxiliares para atualização consistente dos elementos do formulário
-- Sistema de recuperação que oferece reinício rápido do scanner após falhas
-
-### Correção do Erro de Rendering no Next.js 15 (page.tsx)
-- Implementação de Suspense boundary para o componente que utiliza useSearchParams()
-- Separação da lógica em componentes isolados para melhor gestão de estado
-- Adição de fallback visual durante o carregamento
-
-### Dashboard do Contribuinte (page.tsx)
-- Transformação dos cards de estatísticas em elementos clicáveis
-- Implementação de função `navigateToDocuments` para redirecionamento com filtros
-- Adição de efeitos visuais para melhorar a experiência do usuário
-
-### Página de Documentos (page.tsx)
-- Implementação de sistema de filtragem para mostrar documentos por status
-- Exibição visual do filtro ativo com opção de remoção
-- Melhoria nas mensagens de feedback quando não há documentos encontrados com o filtro aplicado
-
-### Serviço de Extração de Dados (fiscalReceiptService.ts)
-- Implementação de logs detalhados para facilitar a depuração
-- Aumento do timeout máximo para 60 segundos, com fallback após 20 segundos
-- Adição de extração direta da página do link antes de chamar a API
-- Implementação de múltiplos padrões regex para reconhecimento de datas e valores
-- Verificações de redundância para garantir a preservação do link original
-
-### Processamento de QR Code (page.tsx)
-- Implementação de timeouts mais curtos e adaptáveis
-- Feedback visual para o usuário durante o processo de extração
-- Múltiplas verificações para garantir a preservação do link original
-- Atualização direta do DOM para garantir consistência visual
+### Aprimoramento do Serviço de Extração (fiscalReceiptService.ts)
+- Adição de funções especializadas para extração direta de valor e data
+- Implementação de novos padrões regex para diferentes formatos
+- Otimização do acesso às páginas web com timeout reduzido
+- Redução do timeout de API para 6 segundos e timeout geral para 10 segundos
+- Melhoria no processamento paralelo e redundante de dados
 
 ### API de Extração (route.ts)
-- Melhorias nos seletores para extração de dados da página HTML
-- Implementação de técnicas agressivas de busca de valores no HTML completo
-- Processamento aprimorado para reconhecer diferentes formatos de data
+- Verificação exaustiva de diversas fontes para obter os dados
+- Retorno antecipado quando dados completos são identificados
+- Consistência na formatação de dados retornados
+- Aplicação de melhorias na extração de HTML
 
 ## Desafios Atuais
 - Variabilidade de formatos e estruturas nas páginas de cupons fiscais entre diferentes estados
-- Necessidade de constante monitoramento e ajuste das técnicas de extração
-- Garantia de desempenho adequado mesmo com conexões de internet lentas
-- Resolução de problemas de compatibilidade com novas versões do Next.js
+- Variação na qualidade e formato dos QR codes em diferentes dispositivos e ambientes
+- Possíveis limitações de hardware em dispositivos mais antigos que afetam a captura
+- Balanceamento entre rapidez e precisão no processamento
 
 ## Próximos Passos
-- Monitorar o desempenho das melhorias implementadas
-- Continuar refinando as técnicas de extração para aumentar a taxa de sucesso
-- Implementar mecanismos de feedback para que usuários possam reportar problemas específicos 
-- Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor
-- Implementar testes automatizados para garantir compatibilidade com futuras atualizações do framework 
+- Monitorar o desempenho das melhorias implementadas em diferentes dispositivos e ambientes
+- Coletar feedback dos usuários sobre a nova experiência de leitura de QR code
+- Analisar os logs para identificar padrões de falhas e implementar melhorias específicas
+- Considerar a adição de sistema de aprendizado automático para melhorar a extração com o tempo
+- Implementar testes automatizados para garantir consistência nas futuras atualizações
 
 # Contexto Ativo
 

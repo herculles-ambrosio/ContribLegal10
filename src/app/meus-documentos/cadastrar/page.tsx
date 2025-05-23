@@ -237,41 +237,65 @@ export default function CadastrarDocumento() {
         }
       }
       
+      // REDUNDÂNCIA: Armazenar o QR code original em um setTimeout para garantir que ele não se perca
+      const qrCodeBackup = originalLink;
+      
       // Mostrar feedback que estamos processando o QR code
       setExtractionMessage('Extraindo dados do cupom fiscal...');
       setIsExtracting(true);
       
-      // Manter uma REFERÊNCIA DIRETA ao link original que deve persistir durante todo o processamento
-      console.log("🔒 Link original que será preservado:", originalLink);
-      
-      // Criar um timeout para garantir que o processamento não demore muito
-      // Reduzir o tempo de timeout para melhorar a experiência do usuário
-      const timeoutDuration = 10000; // 10 segundos máximo
+      // Criar um timeout para limitar o tempo total de extração para 8 segundos
+      // Isso garante que o usuário não ficará esperando indefinidamente
       const extractionTimeoutId = setTimeout(() => {
-        console.log("⏱️ TIMEOUT: Extração demorou muito tempo, cancelando");
+        console.log("⏱️ Timeout de extração atingido! Retornando com dados parciais");
         setIsExtracting(false);
         
-        // Mesmo com timeout, garantir o número do documento
+        // Garantir que temos ao menos o link original
         setFormData(prev => ({
           ...prev,
-          numero_documento: originalLink,
-          valor: prev.valor || '0,00',
-          data_emissao: prev.data_emissao || new Date().toISOString().split('T')[0]
+          numero_documento: qrCodeBackup // Usar backup para garantir que temos o link
         }));
         
-        // Atualizar DOM
-        if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
+        // Garantir que o número do documento é atualizado no DOM
+        if (numeroDocumentoRef.current) {
+          numeroDocumentoRef.current.value = qrCodeBackup;
+          dispatchInputEvent(numeroDocumentoRef.current);
+        }
         
-        toast.error("Tempo de extração excedido. Os campos foram preenchidos com os dados disponíveis.");
+        toast.error("Tempo limite excedido. O QR code foi capturado, mas não foi possível extrair todos os dados.");
         setIsProcessingQrCode(false);
+      }, 8000); // 8 segundos é suficiente para a maioria dos casos, reduzido de 10s
+      
+      // REDUNDÂNCIA: Tentar extrair data e valor do próprio QR code antes de chamar a API
+      const preExtractValor = extractValueFromQRCode(originalLink);
+      const preExtractData = extractDateFromQRCode(originalLink);
+      
+      // Se encontrou dados diretamente no QR code, já atualizar a interface
+      if (preExtractValor || preExtractData) {
+        console.log("🔍 Dados extraídos diretamente do QR code:", { valor: preExtractValor, data: preExtractData });
         
-        // Oferecer ao usuário a opção de tentar novamente o scanner
-        setTimeout(() => {
-          if (window.confirm("Deseja tentar escanear o QR code novamente?")) {
-            handleOpenQrScanner();
+        // Atualizar formulário com dados preliminares enquanto a API processa
+        const updatedFormData: Partial<typeof formData> = { numero_documento: originalLink };
+        
+        if (preExtractValor) {
+          updatedFormData.valor = preExtractValor;
+          if (valorRef.current) {
+            valorRef.current.value = preExtractValor;
+            dispatchInputEvent(valorRef.current);
           }
-        }, 300);
-      }, timeoutDuration);
+        }
+        
+        if (preExtractData) {
+          const formattedDate = formatarDataParaInput(preExtractData);
+          updatedFormData.data_emissao = formattedDate;
+          if (dataEmissaoRef.current) {
+            dataEmissaoRef.current.value = formattedDate;
+            dispatchInputEvent(dataEmissaoRef.current);
+          }
+        }
+        
+        setFormData(prev => ({ ...prev, ...updatedFormData }));
+      }
       
       // Chamar API para extrair dados adicionais
       extractDataFromFiscalReceipt(cleanQrCode)
@@ -296,15 +320,15 @@ export default function CadastrarDocumento() {
           setFormData(prev => ({ 
             ...prev, 
             numero_documento: originalLink, // SEMPRE GARANTIR QUE ESTE É O LINK ORIGINAL
-            valor: info.valor || '0,00',
-            data_emissao: formatarDataParaInput(info.dataEmissao)
+            valor: info.valor || preExtractValor || '0,00',
+            data_emissao: formatarDataParaInput(info.dataEmissao || preExtractData)
           }));
           
           // Atualizar DOM diretamente para garantir que os dados sejam exibidos
-          updateFormElementsDirect(originalLink, info.valor, info.dataEmissao);
+          updateFormElementsDirect(originalLink, info.valor || preExtractValor, info.dataEmissao || preExtractData);
           
           // Verificar se temos valor e data válidos
-          const temDadosCompletos = info.valor && info.dataEmissao;
+          const temDadosCompletos = (info.valor || preExtractValor) && (info.dataEmissao || preExtractData);
           
           // Notificar sucesso com toast
           if (temDadosCompletos) {
@@ -316,7 +340,7 @@ export default function CadastrarDocumento() {
           // Liberar processamento
           setIsProcessingQrCode(false);
         })
-        .catch((error) => {
+        .catch(error => {
           // Limpar timeout em caso de erro
           clearTimeout(extractionTimeoutId);
           console.error("❌ Erro ao extrair dados:", error);
@@ -328,9 +352,12 @@ export default function CadastrarDocumento() {
           setFormData(prev => ({
             ...prev,
             numero_documento: originalLink, // SEMPRE O LINK ORIGINAL
+            valor: preExtractValor || prev.valor,
+            data_emissao: preExtractData ? formatarDataParaInput(preExtractData) : prev.data_emissao
           }));
           
-          if (numeroDocumentoRef.current) numeroDocumentoRef.current.value = originalLink;
+          // Atualizar DOM diretamente
+          updateFormElementsDirect(originalLink, preExtractValor, preExtractData);
           
           // Mostrar erro ao usuário com mensagem mais clara
           toast.error("Não foi possível extrair todos os dados do QR code. Verifique e complete os campos necessários.");
@@ -345,6 +372,83 @@ export default function CadastrarDocumento() {
       toast.error("Erro ao processar o QR code. Tente novamente ou preencha manualmente.");
     }
   }, [isProcessingQrCode]);
+
+  // Funções auxiliares para extrair dados diretamente do QR code
+  const extractValueFromQRCode = (qrCode: string): string | undefined => {
+    try {
+      // Padrões para extrair valores monetários diretamente do QR code
+      const valorPatterns = [
+        /[&?]vNF=(\d+[.,]\d+)/i,
+        /[&?]vPag=(\d+[.,]\d+)/i,
+        /[&?]valor=(\d+[.,]\d+)/i,
+        /[&?]total=(\d+[.,]\d+)/i,
+        /[&?]valorTotal=(\d+[.,]\d+)/i,
+        /valor:?\s*r?\$?\s*(\d+[.,]\d+)/i,
+        /total:?\s*r?\$?\s*(\d+[.,]\d+)/i
+      ];
+
+      for (const pattern of valorPatterns) {
+        const match = qrCode.match(pattern);
+        if (match && match[1]) {
+          // Formatar valor encontrado
+          const rawValue = match[1].replace(',', '.');
+          const numValue = parseFloat(rawValue);
+          if (!isNaN(numValue)) {
+            return numValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          }
+        }
+      }
+      return undefined;
+    } catch (e) {
+      console.error("Erro ao extrair valor do QR code:", e);
+      return undefined;
+    }
+  };
+
+  const extractDateFromQRCode = (qrCode: string): string | undefined => {
+    try {
+      // Padrões para extrair datas diretamente do QR code
+      const dataPatterns = [
+        /[&?]dhEmi=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+        /[&?]dhEmi=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+        /[&?]data=(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+        /[&?]data=(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+        /data:?\s*(\d{2}[\/\.-]\d{2}[\/\.-]\d{4})/i,
+        /data:?\s*(\d{4}[\/\.-]\d{2}[\/\.-]\d{2})/i,
+        // Formato timestamp (14 digitos)
+        /[&?]dhEmi=(\d{14})/i
+      ];
+
+      for (const pattern of dataPatterns) {
+        const match = qrCode.match(pattern);
+        if (match && match[1]) {
+          let dataExtraida = match[1];
+          
+          // Se for formato timestamp (14 dígitos), converter para data
+          if (dataExtraida.length === 14 && /^\d+$/.test(dataExtraida)) {
+            // Formato: AAAAMMDDHHMMSS
+            const ano = dataExtraida.substring(0, 4);
+            const mes = dataExtraida.substring(4, 6);
+            const dia = dataExtraida.substring(6, 8);
+            dataExtraida = `${dia}/${mes}/${ano}`;
+          }
+          // Se for formato AAAA-MM-DD ou AAAA/MM/DD, converter para DD/MM/AAAA
+          else if (/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/.test(dataExtraida)) {
+            const matches = dataExtraida.match(/^([0-9]{4})[-\/]([0-9]{2})[-\/]([0-9]{2})$/);
+            if (matches) {
+              dataExtraida = `${matches[3]}/${matches[2]}/${matches[1]}`;
+            }
+          }
+          
+          return dataExtraida.replace(/-/g, '/');
+        }
+      }
+      return undefined;
+    } catch (e) {
+      console.error("Erro ao extrair data do QR code:", e);
+      return undefined;
+    }
+  };
 
   // Função auxiliar para formatar data para o input do formulário
   const formatarDataParaInput = (dataString?: string): string => {
@@ -584,18 +688,44 @@ export default function CadastrarDocumento() {
       // Reset dos estados antes de abrir o scanner
       setIsProcessingQrCode(false);
       
+      // Verificar permissão de câmera com timeout para evitar bloqueio
+      const permissionPromise = new Promise<boolean>(async (resolve) => {
+        try {
+          // Usar um timeout para a verificação de permissão
+          const permissionTimeout = setTimeout(() => {
+            console.log('Timeout ao verificar permissão de câmera');
+            resolve(false);
+          }, 2000); // 2 segundos de timeout
+
+          // Tentar obter um stream apenas para verificar permissão
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: {
+              facingMode: 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            } 
+          });
+          stream.getTracks().forEach(track => track.stop());
+          
+          clearTimeout(permissionTimeout);
+          resolve(true);
+        } catch (error) {
+          console.error('Erro ao verificar permissão de câmera:', error);
+          resolve(false);
+        }
+      });
+      
+      const hasPermission = await permissionPromise;
+      if (!hasPermission) {
+        toast.error('Não foi possível acessar a câmera. Verifique as permissões do seu navegador.');
+        return;
+      }
+      
       // Mostrar toast para feedback imediato
       toast.success("Preparando scanner de QR code...");
       
-      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
-      setExtractionMessage('Ativando câmera para leitura do QR code...');
-      setIsExtracting(true);
-      
-      // Inicializar scanner mais rapidamente
-      setTimeout(() => {
-        setIsExtracting(false);
-        setShowQrCodeScanner(true);
-      }, 1000);  // Apenas 1s de carregamento para feedback
+      // Abrir o scanner imediatamente sem delay
+      setShowQrCodeScanner(true);
       
     } catch (error) {
       console.error('Erro ao acessar câmera:', error);
@@ -887,7 +1017,10 @@ export default function CadastrarDocumento() {
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeScan}
                   onScanError={handleScannerError}
-                  onDebugLog={(msg) => console.log(msg)}
+                  onDebugLog={(msg) => {
+                    setScannerLogs(prev => [...prev, msg]);
+                    console.log(msg);
+                  }}
                 />
                 
                 <div className="mt-3 text-center">
