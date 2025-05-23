@@ -10,10 +10,23 @@ import { toast } from 'react-hot-toast';
 declare global {
   interface MediaTrackCapabilities {
     torch?: boolean;
+    focusMode?: string[];
+    exposureMode?: string[];
+    whiteBalanceMode?: string[];
   }
   
   interface MediaTrackConstraintSet {
     torch?: boolean;
+    focusMode?: string;
+    exposureMode?: string;
+    whiteBalanceMode?: string;
+  }
+
+  // Adicionar interface para o BarcodeDetector ao Window
+  interface Window {
+    BarcodeDetector?: {
+      new(options?: { formats?: string[] }): any;
+    };
   }
 }
 
@@ -123,14 +136,28 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
 
   // Verificar se o dispositivo suporta BarcodeDetector API
   const supportsNativeBarcodeDetection = useCallback(() => {
-    return 'BarcodeDetector' in window;
-  }, []);
+    try {
+      // Verificação mais robusta para BarcodeDetector
+      return typeof window !== 'undefined' && 
+             'BarcodeDetector' in window && 
+             typeof window.BarcodeDetector === 'function';
+    } catch (error) {
+      log('Erro ao verificar suporte ao BarcodeDetector');
+      return false;
+    }
+  }, [log]);
 
   // Iniciar scanner usando BarcodeDetector API (moderno)
   const startNativeScanner = useCallback(async () => {
     try {
       if (!videoRef.current || !canvasRef.current) {
         log('Referências de vídeo ou canvas não encontradas');
+        return false;
+      }
+      
+      // Verificar novamente o suporte ao BarcodeDetector
+      if (!supportsNativeBarcodeDetection()) {
+        log('BarcodeDetector não é suportado neste navegador, usando fallback');
         return false;
       }
       
@@ -198,7 +225,13 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
-      // @ts-ignore - Tipo BarcodeDetector não está no TypeScript padrão
+      // Verificar se BarcodeDetector está disponível
+      if (!window.BarcodeDetector) {
+        log('BarcodeDetector não disponível, usando fallback');
+        return false;
+      }
+      
+      // Criar detector de códigos de barras
       const barcodeDetector = new window.BarcodeDetector({ 
         formats: ['qr_code'],
       });
@@ -211,17 +244,30 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
           // Desenhar frame atual no canvas
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // Detectar códigos no frame atual
-          const barcodes = await barcodeDetector.detect(canvas);
+          // Verificar novamente se o detector está disponível
+          if (!window.BarcodeDetector || !barcodeDetector) {
+            log('BarcodeDetector não disponível durante o escaneamento');
+            setScanFailed(true);
+            stopScanning();
+            return;
+          }
           
-          if (barcodes.length > 0) {
-            // Encontrou um código QR
-            for (const barcode of barcodes) {
-              if (barcode.rawValue) {
-                processQrCode(barcode.rawValue);
-                return; // Parar após processar o primeiro código
+          // Detectar códigos no frame atual
+          try {
+            const barcodes = await barcodeDetector.detect(canvas);
+            
+            if (barcodes && barcodes.length > 0) {
+              // Encontrou um código QR
+              for (const barcode of barcodes) {
+                if (barcode && barcode.rawValue) {
+                  processQrCode(barcode.rawValue);
+                  return; // Parar após processar o primeiro código
+                }
               }
             }
+          } catch (detectionError) {
+            log(`Erro na detecção: ${detectionError}`);
+            // Continuar mesmo com erro de detecção em um frame
           }
           
           // Continuar escaneamento se não encontrou nada
@@ -407,17 +453,39 @@ const QrCodeScanner: React.FC<QrCodeScannerProps> = ({
         return;
       }
       
+      // Verifica de forma segura se o navegador suporta BarcodeDetector
+      let canUseNativeDetector = false;
+      try {
+        canUseNativeDetector = supportsNativeBarcodeDetection() && 
+                              typeof window.BarcodeDetector === 'function';
+      } catch (e) {
+        log('Erro ao verificar suporte ao BarcodeDetector, usando fallback');
+        canUseNativeDetector = false;
+      }
+      
       // Tentar scanner nativo primeiro, se suportado
       let success = false;
-      if (supportsNativeBarcodeDetection()) {
+      if (canUseNativeDetector) {
         log('Detector nativo de QR code suportado, tentando usar');
-        success = await startNativeScanner();
+        try {
+          success = await startNativeScanner();
+        } catch (e) {
+          log(`Erro ao iniciar scanner nativo: ${e}`);
+          success = false;
+        }
+      } else {
+        log('Detector nativo não suportado');
       }
       
       // Se falhar ou não for suportado, usar fallback
       if (!success) {
         log('Usando scanner fallback');
-        success = await startHtml5QrScanner();
+        try {
+          success = await startHtml5QrScanner();
+        } catch (e) {
+          log(`Erro ao iniciar scanner fallback: ${e}`);
+          success = false;
+        }
       }
       
       if (success) {
