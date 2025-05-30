@@ -142,7 +142,7 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
   return (
     <>
       {/* Premium Blue Header */}
-      <header className="fixed top-0 left-0 right-0 z-[9999] pt-8">
+      <header className="fixed top-0 left-0 right-0 z-[9999] pt-4">
         <div className="flex justify-center">
           <div className="relative max-w-7xl">
             {/* Intense Blue Glow Effect */}
@@ -150,19 +150,18 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
             <div className="absolute -inset-2 bg-gradient-to-r from-blue-500/30 to-blue-600/30 rounded-2xl blur-xl opacity-70"></div>
             
             {/* Main Navbar Container - Blue Theme */}
-            <div className="relative flex items-center gap-4 bg-white/15 backdrop-blur-2xl border border-blue-200/30 py-4 px-6 rounded-2xl shadow-2xl min-h-[80px]">
-              {/* Blue Shimmer */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-200/15 to-transparent animate-shimmer rounded-2xl"></div>
+            <div className="relative flex items-center gap-4 bg-white/15 backdrop-blur-2xl border border-blue-200/30 py-2 px-4 rounded-2xl shadow-2xl min-h-[60px]">
+              {/* Blue Shimmer - Removed to fix color inconsistency */}
               
-              {/* Logo Section - Larger */}
+              {/* Logo Section - Smaller */}
               <div className="relative flex-shrink-0">
-                <Link href="/" className="flex items-center group px-4 py-3">
+                <Link href="/" className="flex items-center group px-2 py-2">
                   <div className="relative">
                     <Image 
                       src="/LOGO_CL_trans.png" 
                       alt="Contribuinte Legal" 
-                      width={120} 
-                      height={60} 
+                      width={90} 
+                      height={45} 
                       className="rounded-2xl shadow-2xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3" 
                       style={{ objectFit: 'contain' }}
                       priority
@@ -188,7 +187,7 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                         onClick={() => handleNavClick(link.id)}
                         onMouseEnter={() => setHoveredTab(link.id)}
                         onMouseLeave={() => setHoveredTab('')}
-                        className="relative cursor-pointer text-base font-semibold px-8 py-4 rounded-2xl transition-all duration-300 text-gray-700 hover:text-gray-900 group"
+                        className="relative cursor-pointer text-base font-semibold px-6 py-3 rounded-2xl transition-all duration-300 text-gray-700 hover:text-gray-900 group"
                       >
                         {/* Active State Background - Blue */}
                         {isActive && (
@@ -230,10 +229,10 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                   <div className="user-dropdown relative">
                     <button
                       onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                      className="flex items-center space-x-4 px-6 py-3 rounded-2xl bg-white/25 hover:bg-white/35 transition-all duration-300 group border border-blue-200/25 min-w-[200px]"
+                      className="flex items-center space-x-4 px-4 py-2 rounded-2xl bg-white/25 hover:bg-white/35 transition-all duration-300 group border border-blue-200/25 min-w-[200px]"
                     >
                       <div className="relative">
-                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-lg">
                           {getInitials(nomeUsuario)}
                         </div>
                         <div className="absolute -inset-1 bg-gradient-to-r from-blue-400/40 to-blue-600/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
@@ -312,7 +311,7 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                   <div className="flex items-center space-x-4">
                     <Link
                       href="/login"
-                      className="flex items-center space-x-3 px-6 py-3 rounded-2xl border border-blue-200/25 bg-white/15 hover:bg-white/25 transition-all duration-300 group text-base font-medium"
+                      className="flex items-center space-x-3 px-4 py-2 rounded-2xl border border-blue-200/25 bg-white/15 hover:bg-white/25 transition-all duration-300 group text-base font-medium"
                     >
                       <FaSignInAlt className="text-lg transition-transform duration-300 group-hover:scale-110" />
                       <span className="font-semibold text-gray-700">Entrar</span>
@@ -320,7 +319,7 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                     
                     <Link
                       href="/registro"
-                      className="flex items-center space-x-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 transition-all duration-300 group shadow-xl text-white text-base font-semibold"
+                      className="flex items-center space-x-3 px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 transition-all duration-300 group shadow-xl text-white text-base font-semibold"
                     >
                       <FaUserPlus className="text-lg transition-transform duration-300 group-hover:scale-110" />
                       <span>Cadastrar</span>
@@ -329,10 +328,10 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
                 )}
               </div>
 
-              {/* Mobile Menu Button - Larger */}
+              {/* Mobile Menu Button - Smaller */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-4 rounded-2xl hover:bg-white/25 transition-all duration-300 ml-4"
+                className="lg:hidden p-3 rounded-2xl hover:bg-white/25 transition-all duration-300 ml-4"
               >
                 {isMobileMenuOpen ? (
                   <FaTimes className="text-2xl text-gray-700" />
@@ -416,20 +415,8 @@ export default function Header({ isAuthenticated = false }: HeaderProps) {
         )}
       </header>
 
-      {/* Add larger margin to prevent content overlap */}
-      <div className="h-32"></div>
-
-      {/* Enhanced Styles */}
-      <style jsx>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        
-        .animate-shimmer {
-          animation: shimmer 4s ease-in-out infinite;
-        }
-      `}</style>
+      {/* Add margin to prevent content overlap */}
+      <div className="h-24"></div>
     </>
   );
 } 

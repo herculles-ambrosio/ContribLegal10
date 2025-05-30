@@ -29,6 +29,7 @@ type Estatisticas = {
   totalValidados: number;
   totalPendentes: number;
   valorTotal: number;
+  totalNumerosSorte: number;
   documentosPorTipo: Record<string, number>;
 };
 
@@ -43,6 +44,7 @@ export default function PainelContribuinte() {
     totalValidados: 0,
     totalPendentes: 0,
     valorTotal: 0,
+    totalNumerosSorte: 0,
     documentosPorTipo: {}
   });
 
@@ -153,11 +155,31 @@ export default function PainelContribuinte() {
           return acc;
         }, {});
         
+        // Buscar total de números da sorte gerados
+        let totalNumerosSorte = 0;
+        const documentosValidadosIds = documentos.filter((doc: any) => doc.status === 'VALIDADO').map((doc: any) => doc.id);
+        
+        if (documentosValidadosIds.length > 0) {
+          try {
+            const { count, error: numerosSorteError } = await supabase
+              .from('numeros_sorte_documento')
+              .select('*', { count: 'exact', head: true })
+              .in('documento_id', documentosValidadosIds);
+            
+            if (!numerosSorteError && count !== null) {
+              totalNumerosSorte = count;
+            }
+          } catch (error) {
+            console.error('Erro ao buscar números da sorte:', error);
+          }
+        }
+        
         setEstatisticas({
           totalDocumentos,
           totalValidados,
           totalPendentes,
           valorTotal,
+          totalNumerosSorte,
           documentosPorTipo
         });
       }
@@ -357,8 +379,8 @@ export default function PainelContribuinte() {
             </div>
           </Link>
           
-          {/* Meus Sorteios */}
-          <Link href="/meus-sorteios" className="group">
+          {/* Meus Números da Sorte */}
+          <Link href="/meus-numeros-sorte" className="group">
             <div className="relative overflow-hidden bg-white border border-gray-200 rounded-xl p-6 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 transform">
               <div className="absolute inset-0 bg-gradient-to-br from-yellow-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <div className="relative z-10">
@@ -368,10 +390,10 @@ export default function PainelContribuinte() {
                   </div>
                   <FaArrowRight className="text-gray-400 group-hover:text-yellow-600 transition-colors" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2 text-gray-900">Meus Sorteios</h3>
+                <h3 className="text-lg font-semibold mb-2 text-gray-900">Meus Números da Sorte</h3>
                 <p className="text-gray-600 text-sm">Ver números e resultados</p>
                 <div className="mt-3 inline-flex items-center text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full">
-                  {estatisticas.totalValidados} aptos
+                  {estatisticas.totalNumerosSorte} números gerados
                 </div>
               </div>
             </div>
