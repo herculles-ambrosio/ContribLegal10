@@ -37,22 +37,36 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
    - Aplicação apenas em rotas protegidas/autenticadas
    - Monitoramento de diversos tipos de eventos de usuário para detecção precisa de atividade
 
-9. **Correção do erro de build no Vercel** - resolução do conflito de dependências com React 19:
-   - Remoção da dependência `react-qr-reader` que não é compatível com React 19
+9. **Correção completa dos erros de build no Vercel** - resolução de conflitos de dependências com React 19 e TailwindCSS v4:
+   - **Primeiro erro**: Remoção da dependência `react-qr-reader` incompatível com React 19
+   - **Segundo erro**: Adição de dependências opcionais para TailwindCSS v4 (`@tailwindcss/oxide-linux-x64-gnu` e `lightningcss-linux-x64-gnu`)
    - Manutenção apenas da biblioteca `html5-qrcode` que já estava sendo usada no código
    - Regeneração do package-lock.json para resolver conflitos de peer dependencies
    - Verificação de build local bem-sucedida
 
 ## Mudanças Recentes
 
-### Correção do Erro de Build no Vercel (30/05/2025)
+### Correção Completa dos Erros de Build no Vercel (30/05/2025)
+
+#### Primeiro Erro - Conflito React 19
 - **Problema identificado**: Conflito de peer dependencies entre `react-qr-reader@3.0.0-beta-1` e React 19
 - **Solução implementada**: Remoção da dependência `react-qr-reader` do package.json
 - **Justificativa**: O projeto já utiliza `html5-qrcode` que é compatível com React 19 e oferece a mesma funcionalidade
+
+#### Segundo Erro - TailwindCSS v4 Dependências Opcionais
+- **Problema identificado**: Erro `Cannot find module '@tailwindcss/oxide-linux-x64-gnu'` no ambiente Linux do Vercel
+- **Causa raiz**: TailwindCSS v4 depende de módulos nativos específicos da plataforma que não são instalados automaticamente em alguns ambientes de build
+- **Solução implementada**: Adição de dependências opcionais no package.json:
+  ```json
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.1",
+    "lightningcss-linux-x64-gnu": "^1.29.1"
+  }
+  ```
 - **Resultado**: Build local bem-sucedido, pronto para deploy no Vercel
 - **Arquivos alterados**: 
-  - `package.json` - remoção da linha `"react-qr-reader": "^3.0.0-beta-1"`
-  - `package-lock.json` - regenerado para resolver conflitos
+  - `package.json` - adição da seção `optionalDependencies`
+  - `package-lock.json` - regenerado para incluir as novas dependências
 
 ### Implementação de Logout Automático por Inatividade
 - Criação de hook personalizado `useIdleTimer` para monitorar atividade do usuário
@@ -113,10 +127,10 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
 - Variabilidade de formatos e estruturas nas páginas de cupons fiscais entre diferentes estados
 - Necessidade de constante monitoramento e ajuste das técnicas de extração
 - Garantia de desempenho adequado mesmo com conexões de internet lentas
-- Resolução de problemas de compatibilidade com novas versões do Next.js
+- Resolução de problemas de compatibilidade com novas versões do Next.js e TailwindCSS
 
 ## Próximos Passos
-- Monitorar o desempenho das melhorias implementadas
+- Monitorar o desempenho das melhorias implementadas no Vercel
 - Continuar refinando as técnicas de extração para aumentar a taxa de sucesso
 - Implementar mecanismos de feedback para que usuários possam reportar problemas específicos 
 - Expandir os filtros de visualização para permitir mais opções, como filtrar por período ou valor
@@ -139,9 +153,10 @@ As principais áreas de trabalho incluem:
    - Adição de sistema de filtros na visualação de documentos
    - Correção de problemas de exibição de datas em todas as telas do sistema
 
-3. **Compatibilidade com Next.js 15**
+3. **Compatibilidade com Next.js 15 e TailwindCSS v4**
    - Implementação de Suspense boundaries para componentes com hooks específicos
    - Solução para problemas de renderização durante build
+   - Resolução de conflitos de dependências em ambientes de produção
 
 ## Mudanças Recentes
 
@@ -150,11 +165,13 @@ As principais áreas de trabalho incluem:
 - Otimização do scanner de QR code para processamento mais rápido e confiável
 - Correção do problema de timezone na exibição de datas em todas as telas
 - Implementação de função `formatarDataSemTimezone` para garantir consistência entre a data gravada e a exibida
+- Correção completa dos erros de build no Vercel (React 19 + TailwindCSS v4)
 
 ### Problemas Resolvidos
 - Extração parcial de números de documentos durante leitura do QR code
 - Incompatibilidade com Next.js 15 ao usar hooks específicos
 - Inconsistência na exibição de datas, onde datas cadastradas apareciam como sendo do dia anterior nas telas de listagem
+- Conflitos de dependências no build do Vercel com React 19 e TailwindCSS v4
 
 ## Decisões Técnicas Ativas
 
@@ -171,12 +188,17 @@ As principais áreas de trabalho incluem:
    - Encapsulamento de componentes que usam hooks específicos do Next.js 15
    - Fallbacks adequados para cada tipo de componente
 
+4. **Gestão de Dependências para Compatibilidade**
+   - Uso de dependências opcionais para resolver problemas de plataforma específica
+   - Manutenção de compatibilidade entre React 19, Next.js 15 e TailwindCSS v4
+
 ## Próximos Passos
 
 1. **Curto Prazo**
    - Monitoramento da performance do scanner em diferentes ambientes
    - Verificação da consistência nas exibições de datas em todas as partes do sistema
    - Validação da experiência do usuário nas diferentes telas e fluxos
+   - Acompanhamento do build no Vercel após as correções implementadas
 
 2. **Médio Prazo**
    - Expansão do sistema de filtros para incluir mais opções de filtros específicos
