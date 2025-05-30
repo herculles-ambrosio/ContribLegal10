@@ -5,7 +5,7 @@ import Layout from '@/components/Layout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy, FaFileContract, FaExclamationTriangle } from 'react-icons/fa';
+import { FaPlus, FaFileAlt, FaMoneyBillWave, FaReceipt, FaCheckCircle, FaTimesCircle, FaHourglassHalf, FaTrophy, FaFileContract, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -73,7 +73,7 @@ export default function PainelContribuinte() {
             .select('status')
             .single();
 
-          if (!empresaError && empresaData) {
+          if (!empresaError && empresaData && 'status' in empresaData) {
             setEmpresaStatus(empresaData.status);
             
             // Se a empresa estiver bloqueada, redirecionar para a página inicial
@@ -110,7 +110,7 @@ export default function PainelContribuinte() {
       const { data: documentos, error } = await supabase
         .from('documentos')
         .select('*')
-        .eq('usuario_id', session.user.id)
+        .eq('usuario_id', session.user.id as any)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -118,17 +118,23 @@ export default function PainelContribuinte() {
       // Calcular estatísticas
       if (documentos && documentos.length > 0) {
         // Documentos recentes
-        setDocumentosRecentes(documentos.slice(0, 3) as Documento[]);
+        setDocumentosRecentes(documentos.slice(0, 3) as any);
         
         // Total de documentos
         const totalDocumentos = documentos.length;
         
         // Documentos por status
-        const totalValidados = documentos.filter(doc => doc.status === 'VALIDADO').length;
-        const totalPendentes = documentos.filter(doc => doc.status === 'AGUARDANDO VALIDAÇÃO').length;
+        const totalValidados = documentos.filter((doc: any) => 
+          doc && doc.status === 'VALIDADO'
+        ).length;
+        const totalPendentes = documentos.filter((doc: any) => 
+          doc && doc.status === 'AGUARDANDO VALIDAÇÃO'
+        ).length;
         
         // Valor total
-        const valorTotal = documentos.reduce((total, doc) => {
+        const valorTotal = documentos.reduce((total: number, doc: any) => {
+          if (!doc || !doc.valor) return total;
+          
           let valor = 0;
           if (typeof doc.valor === 'number') {
             valor = doc.valor;
@@ -139,7 +145,9 @@ export default function PainelContribuinte() {
         }, 0);
         
         // Documentos por tipo
-        const documentosPorTipo = documentos.reduce((acc: Record<string, number>, doc) => {
+        const documentosPorTipo = documentos.reduce((acc: Record<string, number>, doc: any) => {
+          if (!doc || !doc.tipo) return acc;
+          
           const tipo = doc.tipo || 'OUTRO';
           acc[tipo] = (acc[tipo] || 0) + 1;
           return acc;
@@ -267,8 +275,8 @@ export default function PainelContribuinte() {
   return (
     <Layout isAuthenticated>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Painel do Contribuinte</h1>
-        <p className="text-gray-600">
+        <h1 className="text-3xl font-bold mb-2 text-gray-900">Painel do Contribuinte</h1>
+        <p className="text-gray-600 text-lg">
           Bem-vindo(a) ao seu painel, {nomeUsuario}
         </p>
       </div>
@@ -289,6 +297,87 @@ export default function PainelContribuinte() {
           </div>
         </div>
       )}
+      
+      {/* Acesso Rápido - Movido para o topo */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold mb-4 text-gray-900">Acesso Rápido</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Botão Cadastrar Documento - Destacado */}
+          {empresaStatus === 'ATIVO' ? (
+            <Link href="/meus-documentos/cadastrar" className="group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 hover:from-blue-600 hover:to-blue-700 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 transform">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                      <FaPlus className="text-2xl" />
+                    </div>
+                    <FaArrowRight className="text-white/60 group-hover:text-white/80 transition-colors" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Cadastrar Novo Documento</h3>
+                  <p className="text-blue-100 text-sm">Adicione uma nova nota fiscal ou cupom</p>
+                  <div className="mt-3 inline-flex items-center text-xs font-medium bg-white/20 px-2 py-1 rounded-full">
+                    ⭐ Ação Principal
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="relative overflow-hidden bg-gray-100 text-gray-500 rounded-xl p-6 cursor-not-allowed opacity-60">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                  <FaPlus className="text-2xl text-gray-400" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Cadastrar Novo Documento</h3>
+              <p className="text-gray-400 text-sm">Opção indisponível no momento</p>
+              <div className="mt-3 inline-flex items-center text-xs font-medium bg-gray-200 px-2 py-1 rounded-full">
+                🚫 Bloqueado
+              </div>
+            </div>
+          )}
+          
+          {/* Meus Documentos */}
+          <Link href="/meus-documentos" className="group">
+            <div className="relative overflow-hidden bg-white border border-gray-200 rounded-xl p-6 hover:border-green-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 transform">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                    <FaFileAlt className="text-2xl text-green-600" />
+                  </div>
+                  <FaArrowRight className="text-gray-400 group-hover:text-green-600 transition-colors" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2 text-gray-900">Meus Documentos</h3>
+                <p className="text-gray-600 text-sm">Visualizar documentos cadastrados</p>
+                <div className="mt-3 inline-flex items-center text-xs font-medium text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                  {estatisticas.totalDocumentos} documentos
+                </div>
+              </div>
+            </div>
+          </Link>
+          
+          {/* Meus Sorteios */}
+          <Link href="/meus-sorteios" className="group">
+            <div className="relative overflow-hidden bg-white border border-gray-200 rounded-xl p-6 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 transform">
+              <div className="absolute inset-0 bg-gradient-to-br from-yellow-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
+                    <FaTrophy className="text-2xl text-yellow-600" />
+                  </div>
+                  <FaArrowRight className="text-gray-400 group-hover:text-yellow-600 transition-colors" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2 text-gray-900">Meus Sorteios</h3>
+                <p className="text-gray-600 text-sm">Ver números e resultados</p>
+                <div className="mt-3 inline-flex items-center text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full">
+                  {estatisticas.totalValidados} aptos
+                </div>
+              </div>
+            </div>
+          </Link>
+        </div>
+      </div>
       
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -408,43 +497,6 @@ export default function PainelContribuinte() {
           )}
         </Card>
       </div>
-      
-      {/* Acesso rápido */}
-      <Card title="Acesso Rápido">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
-          {empresaStatus === 'ATIVO' ? (
-            <Link href="/meus-documentos/cadastrar">
-              <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">
-                <FaPlus className="text-3xl text-blue-500 mx-auto mb-3" />
-                <h3 className="font-medium">Cadastrar Documento</h3>
-                <p className="text-sm text-gray-600 mt-1">Adicionar nova nota fiscal</p>
-              </div>
-            </Link>
-          ) : (
-            <div className="bg-gray-50 opacity-50 cursor-not-allowed rounded-lg p-4 text-center">
-              <FaPlus className="text-3xl text-gray-400 mx-auto mb-3" />
-              <h3 className="font-medium text-gray-500">Cadastrar Documento</h3>
-              <p className="text-sm text-gray-500 mt-1">Opção indisponível</p>
-            </div>
-          )}
-          
-          <Link href="/meus-documentos">
-            <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">
-              <FaFileAlt className="text-3xl text-green-500 mx-auto mb-3" />
-              <h3 className="font-medium">Meus Documentos</h3>
-              <p className="text-sm text-gray-600 mt-1">Visualizar documentos cadastrados</p>
-            </div>
-          </Link>
-          
-          <Link href="/meus-sorteios">
-            <div className="bg-gray-50 hover:bg-gray-100 transition-colors rounded-lg p-4 text-center">
-              <FaTrophy className="text-3xl text-yellow-500 mx-auto mb-3" />
-              <h3 className="font-medium">Meus Sorteios</h3>
-              <p className="text-sm text-gray-600 mt-1">Ver números e resultados</p>
-            </div>
-          </Link>
-        </div>
-      </Card>
     </Layout>
   );
 } 
