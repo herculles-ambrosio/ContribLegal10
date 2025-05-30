@@ -37,7 +37,22 @@ Correção crítica na leitura de QR codes de cupons fiscais com foco na preserv
    - Aplicação apenas em rotas protegidas/autenticadas
    - Monitoramento de diversos tipos de eventos de usuário para detecção precisa de atividade
 
+9. **Correção do erro de build no Vercel** - resolução do conflito de dependências com React 19:
+   - Remoção da dependência `react-qr-reader` que não é compatível com React 19
+   - Manutenção apenas da biblioteca `html5-qrcode` que já estava sendo usada no código
+   - Regeneração do package-lock.json para resolver conflitos de peer dependencies
+   - Verificação de build local bem-sucedida
+
 ## Mudanças Recentes
+
+### Correção do Erro de Build no Vercel (30/05/2025)
+- **Problema identificado**: Conflito de peer dependencies entre `react-qr-reader@3.0.0-beta-1` e React 19
+- **Solução implementada**: Remoção da dependência `react-qr-reader` do package.json
+- **Justificativa**: O projeto já utiliza `html5-qrcode` que é compatível com React 19 e oferece a mesma funcionalidade
+- **Resultado**: Build local bem-sucedido, pronto para deploy no Vercel
+- **Arquivos alterados**: 
+  - `package.json` - remoção da linha `"react-qr-reader": "^3.0.0-beta-1"`
+  - `package-lock.json` - regenerado para resolver conflitos
 
 ### Implementação de Logout Automático por Inatividade
 - Criação de hook personalizado `useIdleTimer` para monitorar atividade do usuário

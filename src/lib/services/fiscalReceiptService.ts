@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 
 // Constantes para depuração
 const DEBUG = true;  // Habilitar logs para diagnóstico
-const REDUCED_TIMEOUT = false;  // Se true, usa timeout reduzido para testes rápidos
+const REDUCED_TIMEOUT = true;  // Usar timeout reduzido para melhorar experiência do usuário
 
 export interface FiscalReceiptData {
   numeroDocumento?: string;
@@ -35,8 +35,7 @@ export async function extractDataFromFiscalReceipt(
 
     if (DEBUG) console.log('🔍 URL da API:', apiUrl);
 
-    // Fazer requisição para nossa API com timeout aumentado para 20 segundos
-    // para melhorar a chance de sucesso na extração
+    // Fazer requisição para nossa API com timeout reduzido
     const controller = new AbortController();
     const timeoutDuration = REDUCED_TIMEOUT ? 5000 : 12000; // 5 ou 12 segundos
     const timeoutId = setTimeout(() => {
@@ -75,9 +74,9 @@ export async function extractDataFromFiscalReceipt(
         // 2. Chamada à API (mais preciso, mas mais lento)
         (async () => {
           try {
-            // Usar um timeout maior para a chamada da API
+            // Usar um timeout menor para a chamada da API
             const apiController = new AbortController();
-            const apiTimeoutId = setTimeout(() => apiController.abort(), 18000); // 18 segundos máximo
+            const apiTimeoutId = setTimeout(() => apiController.abort(), 8000); // 8 segundos máximo
             
             const response = await fetch(apiUrl, {
               method: 'POST',

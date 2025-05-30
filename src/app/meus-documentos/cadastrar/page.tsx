@@ -587,15 +587,8 @@ export default function CadastrarDocumento() {
       // Mostrar toast para feedback imediato
       toast.success("Preparando scanner de QR code...");
       
-      // Mostrar modal de carregamento brevemente para indicar que estamos preparando o scanner
-      setExtractionMessage('Ativando câmera para leitura do QR code...');
-      setIsExtracting(true);
-      
-      // Inicializar scanner mais rapidamente
-      setTimeout(() => {
-        setIsExtracting(false);
-        setShowQrCodeScanner(true);
-      }, 1000);  // Apenas 1s de carregamento para feedback
+      // Abrir o scanner imediatamente sem delay
+      setShowQrCodeScanner(true);
       
     } catch (error) {
       console.error('Erro ao acessar câmera:', error);
@@ -887,7 +880,10 @@ export default function CadastrarDocumento() {
                 <QrCodeScanner 
                   onScanSuccess={handleQrCodeScan}
                   onScanError={handleScannerError}
-                  onDebugLog={(msg) => console.log(msg)}
+                  onDebugLog={(msg) => {
+                    setScannerLogs(prev => [...prev, msg]);
+                    console.log(msg);
+                  }}
                 />
                 
                 <div className="mt-3 text-center">
